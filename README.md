@@ -142,6 +142,10 @@ Not built yet:
 - Pre-filling checkout from the signed-in account
 - An automated test suite
 
+## Deploying to Vercel
+
+`vercel.json` defines one Flask service. Vercel finds the app through `wsgi.py`; the service's build command builds the Tailwind CSS and copies `app/static` into `public/static`, so `/static/...` is served from Vercel's CDN at the same URLs the templates use (`public/` is git-ignored). Set the environment variables from `.env.example` in the Vercel project (with `SESSION_COOKIE_SECURE=1`). Migrations don't run on deploy: run `flask db upgrade` against the database yourself.
+
 ## Going to production
 
 - Generate a strong `SECRET_KEY`. Set `SESSION_COOKIE_SECURE=1` and serve the site over HTTPS only.

@@ -10,3 +10,6 @@ app/static/css/output.css
 CLAUDE.md 
 log.txt
 _.md 
+
+# Vercel build output (vercel.json buildCommand copies app/static here)
+public/

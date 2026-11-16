@@ -1,0 +1,13 @@
+Running build in Washington, D.C., USA (East) – iad1
+Build machine configuration: 2 cores, 8 GB
+Cloning github.com/DEVIT-009/keyora-store (Branch: production, Commit: 947328b)
+Previous build caches not available.
+Cloning completed: 464.000ms
+Running "vercel build"
+Vercel CLI 65.15.0
+Error: [FLASK_ENTRYPOINT_NOT_FOUND] No Flask entrypoint found in default locations, but found potential entrypoints:
+  run.py (variable: app)
+Add this to your pyproject.toml:
+[tool.vercel]
+entrypoint = "run:app"
+Learn More: https://vercel.com/docs/frameworks/backend/flask#exporting-the-flask-application
