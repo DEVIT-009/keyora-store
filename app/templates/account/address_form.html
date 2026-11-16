@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% from "components/forms.html" import field, error_summary, csrf_field with context %}
+{% set heading = "Edit address" if address else "Add an address" %}
+{% block title %}{{ heading }} · Keyora{% endblock %}
+{% block content %}
+<section class="container-page section-tight">
+  <div class="mx-auto max-w-2xl">
+    <nav aria-label="Breadcrumb">
+      <ol class="breadcrumb">
+        <li><a href="{{ url_for('account.overview') }}">Account</a></li>
+        <li><a href="{{ url_for('account.overview') }}#addresses">Addresses</a></li>
+        <li aria-current="page">{{ "Edit" if address else "New" }}</li>
+      </ol>
+    </nav>
+    <h1 class="mt-4 text-h2">{{ heading }}</h1>
+
+    <form method="post" novalidate class="card mt-8 flex flex-col gap-5">
+      {{ csrf_field() }}
+      {{ error_summary(errors) }}
+      <div class="grid gap-5 sm:grid-cols-2">
+        {% call(attrs) field("receiver_name", "Receiver name") %}
+        <input {{ attrs }} type="text" class="input" autocomplete="name" required maxlength="80" value="{{ data.receiver_name }}">
+        {% endcall %}
+        {% call(attrs) field("phone", "Phone") %}
+        <input {{ attrs }} type="tel" class="input" autocomplete="tel" inputmode="tel" required value="{{ data.phone }}" placeholder="012 345 678">
+        {% endcall %}
+      </div>
+      {% call(attrs) field("province", "Province / City") %}
+      <select {{ attrs }} class="input" autocomplete="address-level1" required>
+        <option value="" disabled {{ "selected" if not data.province }}>Choose a province or city</option>
+        {% for province in provinces %}<option {{ "selected" if data.province == province }}>{{ province }}</option>{% endfor %}
+      </select>
+      {% endcall %}
+      {% call(attrs) field("address", "Address details") %}
+      <textarea {{ attrs }} class="input min-h-24" autocomplete="street-address" required maxlength="300" rows="3"
+                placeholder="House no., street, sangkat / commune, khan / district">{{ data.address }}</textarea>
+      {% endcall %}
+      <label class="flex items-center gap-2.5 text-sm text-ink">
+        <input type="checkbox" name="is_default" class="size-4.5 accent-ink" {{ "checked" if data.is_default }}> Use as my default address
+      </label>
+      <div class="mt-2 flex flex-wrap items-center gap-3 border-t pt-6">
+        <button class="btn btn-primary">{{ "Save changes" if address else "Save address" }}</button>
+        <a href="{{ url_for('account.overview') }}#addresses" class="btn btn-ghost">Cancel</a>
+      </div>
+    </form>
+  </div>
+</section>
+{% endblock %}

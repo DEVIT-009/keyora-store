@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Keyora{% endblock %}</title>
+  <link rel="icon" href="{{ url_for('static', filename='img/favicon.svg') }}" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/apple-touch-icon.png') }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400..800&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/output.css') }}">
+</head>
+<body class="flex min-h-screen flex-col">
+  <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 btn btn-primary btn-sm">Skip to content</a>
+
+  {# Storefront chrome; the admin replaces header and footer (templates/admin/_layout.html). #}
+  {% block header %}
+  <header class="site-header">
+    <div class="site-header-inner container-page">
+      <details class="relative lg:hidden">
+        <summary class="btn btn-ghost btn-icon -ml-3 list-none" aria-label="Menu">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+        </summary>
+        {# Explicit height, not bottom-0: the header's backdrop-blur makes it the containing block of this fixed panel. #}
+        <nav class="fixed inset-x-0 top-[calc(var(--header-h)+1px)] h-[calc(100dvh-var(--header-h)-1px)] overflow-y-auto border-t bg-white p-[var(--gutter)]">
+          <ul class="flex flex-col divide-y">
+            {% for item in ["Keyboards", "Switches", "Keycaps", "Accessories"] %}
+            <li><a href="{{ url_for('main.category', slug=item|lower) }}" class="block py-4 text-h4 text-ink">{{ item }}</a></li>
+            {% endfor %}
+            <li><a href="{{ url_for('main.categories') }}" class="block py-4 text-h4 text-ink">All categories</a></li>
+            <li><a href="{{ url_for('account.overview') }}" class="block py-4 text-h4 text-ink">{{ "Account" if current_user.is_authenticated else "Sign in" }}</a></li>
+            {% if current_user.is_admin %}<li><a href="{{ url_for('admin.dashboard') }}" class="block py-4 text-h4 text-ink">Admin</a></li>{% endif %}
+          </ul>
+        </nav>
+      </details>
+
+      <a href="{{ url_for('main.index') }}" class="flex items-center gap-2 text-xl font-extrabold tracking-tight text-ink">
+        <img src="{{ url_for('static', filename='img/keyora.svg') }}" alt="" width="40" height="32" class="h-8 w-auto">Keyora
+      </a>
+
+      <nav class="hidden h-full lg:block" aria-label="Primary">
+        <ul class="flex h-full gap-8">
+          {% for item in ["Keyboards", "Switches", "Keycaps", "Accessories"] %}
+          <li><a href="{{ url_for('main.category', slug=item|lower) }}" class="nav-link">{{ item }}</a></li>
+          {% endfor %}
+        </ul>
+      </nav>
+
+      <div class="ml-auto flex items-center gap-1 -mr-3">
+        {% if current_user.is_admin %}<a href="{{ url_for('admin.dashboard') }}" class="btn btn-secondary btn-sm mr-2 hidden sm:inline-flex">Admin</a>{% endif %}
+        <a href="{{ url_for('main.search') }}" class="btn btn-ghost btn-icon" aria-label="Search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        </a>
+        <a href="{{ url_for('account.overview') }}" class="btn btn-ghost btn-icon hidden sm:inline-flex"
+           aria-label="{{ 'Account' if current_user.is_authenticated else 'Sign in' }}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+        </a>
+        <a href="{{ url_for('cart.view') }}" class="btn btn-ghost btn-icon relative"
+           aria-label="Cart{{ ', %d item%s' % (cart_count, '' if cart_count == 1 else 's') if cart_count }}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l-1.2 12H6.2L5 8Z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>
+          {% if cart_count %}<span class="count-bubble" aria-hidden="true">{{ cart_count if cart_count < 100 else "99+" }}</span>{% endif %}
+        </a>
+      </div>
+    </div>
+  </header>
+  {% endblock %}
+
+  <main id="main" class="flex-1">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="container-page flex flex-col gap-2 pt-6" role="status">
+      {% for category, message in messages %}<p class="notice {{ 'notice-success' if category == 'success' else 'notice-info' }}">{{ message }}</p>{% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+
+  {% block footer %}
+  <footer class="site-footer">
+    <div class="container-page">
+      <div class="grid grid-cols-2 gap-x-6 gap-y-10 md:grid-cols-3 lg:grid-cols-4">
+        {% for heading, links in [
+          ("Shop", ["Keyboards", "Switches", "Keycaps", "Accessories"]),
+          ("Support", ["Contact", "Shipping", "Returns", "Warranty"]),
+          ("Company", ["About", "Careers", "Press"]),
+        ] %}
+        <div>
+          <h2 class="footer-heading">{{ heading }}</h2>
+          <ul class="space-y-2.5">
+            {% for link in links %}<li><a href="#" class="link-muted">{{ link }}</a></li>{% endfor %}
+          </ul>
+        </div>
+        {% endfor %}
+        <div class="col-span-2 md:col-span-3 lg:col-span-1">
+          <h2 class="footer-heading">Newsletter</h2>
+          <form class="flex max-w-md gap-2" onsubmit="return false">
+            <label for="footer-email" class="sr-only">Email</label>
+            <input id="footer-email" type="email" class="input" placeholder="Email address">
+            <button class="btn btn-primary">Join</button>
+          </form>
+        </div>
+      </div>
+      <div class="divider mt-14 flex flex-col gap-2 pt-6 text-muted sm:flex-row sm:justify-between">
+        <p>&copy; {{ 2026 }} Keyora</p>
+        <p><a href="#" class="link-muted">Privacy</a> &middot; <a href="#" class="link-muted">Terms</a></p>
+      </div>
+    </div>
+  </footer>
+  {% endblock %}
+  {% block scripts %}{% endblock %}
+</body>
+</html>

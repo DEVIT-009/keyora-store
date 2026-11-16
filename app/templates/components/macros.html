@@ -1,0 +1,92 @@
+{% macro icon(name, class="size-6") -%}
+<svg class="{{ class }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  {%- if name == "truck" %}<path d="M3 6h11v10H3zM14 9h4l3 3v4h-7"/><circle cx="7" cy="17.5" r="1.5"/><circle cx="17" cy="17.5" r="1.5"/>
+  {%- elif name == "shield" %}<path d="M12 3 5 6v5c0 4.5 3 8 7 10 4-2 7-5.5 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/>
+  {%- elif name == "swap" %}<path d="M7 4v13M3 13l4 4 4-4M17 20V7M21 11l-4-4-4 4"/>
+  {%- elif name == "return" %}<path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>
+  {%- elif name == "check" %}<path d="m5 12.5 4.5 4.5L19 7.5"/>
+  {%- elif name == "minus" %}<path d="M5 12h14"/>
+  {%- elif name == "plus" %}<path d="M12 5v14M5 12h14"/>
+  {%- elif name == "store" %}<path d="M4 10v10h16V10"/><path d="M3 10 5 4h14l2 6c0 1.5-1.3 2.5-2.7 2.5S16 11.5 16 10c0 1.5-1.3 2.5-2.7 2.5h-2.6C9.3 12.5 8 11.5 8 10c0 1.5-1.3 2.5-2.7 2.5S3 11.5 3 10Z"/><path d="M10 20v-4h4v4"/>
+  {%- elif name == "qr" %}<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><path d="M14 14h2v2h-2zM18 14h2M14 18v2M18 18h2v2"/>
+  {%- elif name == "bag" %}<path d="M5 8h14l-1.2 12H6.2L5 8Z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>
+  {%- endif %}
+</svg>
+{%- endmacro %}
+
+{% macro star() -%}
+<svg viewBox="0 0 20 20" aria-hidden="true"><path d="m10 1.5 2.6 5.4 5.9.8-4.3 4.1 1 5.8L10 14.8l-5.2 2.8 1-5.8L1.5 7.7l5.9-.8L10 1.5Z"/></svg>
+{%- endmacro %}
+
+{% set BADGE_LABELS = {"new": "New", "sale": "Sale", "preorder": "Pre-order", "soldout": "Sold out"} %}
+
+{# Sold out overrides any merchandising badge. #}
+{% macro product_badge(p) -%}
+{% set badge = "soldout" if p.stock == "out_of_stock" else p.badge %}
+{%- if badge %}<span class="badge badge-{{ badge }}">{{ BADGE_LABELS[badge] }}</span>{% endif %}
+{%- endmacro %}
+
+{# Pass `variant` to price one variant; otherwise the product's cheapest variant, as "From $X" when prices differ. #}
+{% macro price(p, class="", variant=None) -%}
+{% set amount = variant.effective_price if variant else p.min_price %}
+{% set compare_at = variant.effective_compare_at if variant else p.min_compare_at %}
+<p class="price {{ class }}" data-price>
+  {% if not variant and p.has_price_range %}<span class="font-medium text-muted">From</span>{% endif %}
+  {% if compare_at %}
+  <span class="price-sale">{{ amount|money }}</span>
+  <span class="price-compare"><span class="sr-only">Was </span>{{ compare_at|money }}</span>
+  {% else %}
+  <span>{{ amount|money }}</span>
+  {% endif %}
+</p>
+{%- endmacro %}
+
+{# `p` is a product or a variant; both expose `stock` and `stock_qty`. #}
+{% macro stock_status(p, ships=None) -%}
+{% if p.stock == "low_stock" %}<p class="stock stock-low">Only {{ p.stock_qty }} left in stock</p>
+{% elif p.stock == "out_of_stock" %}<p class="stock stock-out">Sold out</p>
+{% elif p.stock == "preorder" %}<p class="stock stock-preorder">Pre-order · ships {{ ships or p.preorder_ships }}</p>
+{% else %}<p class="stock stock-in">In stock · ships in 1–2 business days</p>
+{% endif %}
+{%- endmacro %}
+
+{# Customer-facing order state: payment status until paid, then shipping progress. #}
+{% macro order_state(order) -%}
+{% set pickup = order.delivery == "pickup" %}
+{% if order.status == "pending" %}{% set label, cls = "Awaiting payment", "stock-low" %}
+{% elif order.status == "expired" %}{% set label, cls = "Expired, not paid", "stock-out" %}
+{% elif order.status == "cancelled" %}{% set label, cls = "Cancelled", "stock-out" %}
+{% elif order.fulfillment == "packed" %}{% set label, cls = "Packed, " ~ ("ready for pickup soon" if pickup else "shipping soon"), "stock-preorder" %}
+{% elif order.fulfillment == "shipped" %}{% set label, cls = "Ready to collect" if pickup else "On its way", "stock-preorder" %}
+{% elif order.fulfillment == "delivered" %}{% set label, cls = "Collected" if pickup else "Delivered", "stock-in" %}
+{% elif order.fulfillment == "refunded" %}{% set label, cls = "Refunded", "stock-out" %}
+{% elif order.status == "paid_late" %}{% set label, cls = "Paid after expiry, we'll contact you", "stock-low" %}
+{% else %}{% set label, cls = "Paid, preparing your order", "stock-in" %}
+{% endif %}
+<span class="stock {{ cls }}">{{ label }}</span>
+{%- endmacro %}
+
+{% macro product_card(p) -%}
+{% set url = url_for("main.product", slug=p.slug) %}
+<article class="product-card">
+  <div class="media media-cover">
+    {% set badge = product_badge(p) %}
+    {% if badge|trim %}<div class="media-badges">{{ badge }}</div>{% endif %}
+    <img src="{{ img_url(p.image, 600, 600) }}"
+         srcset="{{ img_srcset(p.image, [320, 480, 640, 800], 1) }}"
+         sizes="(min-width: 64rem) 23vw, (min-width: 48rem) 46vw, 48vw"
+         alt="{{ p.name }}" loading="lazy" decoding="async">
+  </div>
+  <div class="flex flex-col gap-1">
+    <div class="flex items-center justify-between gap-2">
+      <div class="flex gap-1.5" aria-label="{{ p.swatches|length }} colors">
+        {% for name, hex in p.swatches %}<span class="swatch size-3.5 ring-offset-1" style="background: {{ hex }}" title="{{ name }}"></span>{% endfor %}
+      </div>
+      <span class="rating">{{ star() }}{{ p.rating }} <span>({{ p.review_count }})</span></span>
+    </div>
+    <h3 class="product-title mt-1"><a href="{{ url }}">{{ p.name }}</a></h3>
+    <p class="meta">{{ p.spec }}</p>
+    {{ price(p, "mt-1") }}
+  </div>
+</article>
+{%- endmacro %}

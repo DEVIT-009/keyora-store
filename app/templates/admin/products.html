@@ -1,0 +1,74 @@
+{% extends "admin/_layout.html" %}
+{% from "admin/_macros.html" import pager, filter_chip, search_form with context %}
+{% from "components/macros.html" import price, product_badge %}
+{% from "components/forms.html" import csrf_field with context %}
+
+{% block title %}Products · Keyora admin{% endblock %}
+
+{% block admin %}
+<div class="flex flex-wrap items-end justify-between gap-4">
+  <div>
+    <p class="eyebrow">Admin</p>
+    <h1 class="mt-2 text-h2">Products</h1>
+  </div>
+  <a href="{{ url_for('admin.product_new') }}" class="btn btn-primary btn-sm">Add product</a>
+</div>
+
+<div class="flex flex-col gap-3">
+  {{ search_form(q, "Name, slug or SKU", keep=("category", "stock")) }}
+  <div class="scroller flex gap-2" aria-label="Category">
+    {{ filter_chip("All categories", {"category": None}, not category_id) }}
+    {% for c in categories %}{{ filter_chip(c.name, {"category": c.id}, category_id == c.id) }}{% endfor %}
+  </div>
+  <div class="scroller flex gap-2" aria-label="Stock">
+    {{ filter_chip("Any stock", {"stock": None}, not stock) }}
+    {% for key, label in stock_filters.items() %}{{ filter_chip(label, {"stock": key}, stock == key) }}{% endfor %}
+  </div>
+</div>
+
+{% if page.items %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr><th scope="col">Product</th><th scope="col">Category</th><th scope="col">Price</th><th scope="col">Stock</th><th scope="col">Store</th></tr>
+    </thead>
+    <tbody>
+      {% for p in page.items %}
+      <tr>
+        <td>
+          <span class="flex items-center gap-3">
+            <span class="media media-cover block size-12 shrink-0">{% if p.image %}<img src="{{ img_url(p.image, 96, 96) }}" alt="" loading="lazy" decoding="async">{% endif %}</span>
+            <span class="min-w-0">
+              <a href="{{ url_for('admin.product_edit', product_id=p.id) }}" class="block truncate font-bold text-ink hover:underline">{{ p.name }}</a>
+              <span class="block text-muted">{{ p.variants|length }} variant{{ "" if p.variants|length == 1 else "s" }}{% if p.layout %} · {{ p.layout }}{% endif %}</span>
+            </span>
+          </span>
+        </td>
+        <td class="whitespace-nowrap text-muted">{{ p.category.name }}</td>
+        <td class="whitespace-nowrap">{{ price(p, "text-sm") }}</td>
+        <td class="whitespace-nowrap">
+          {% if p.stock == "preorder" %}<span class="stock stock-preorder">Pre-order</span>
+          {% elif p.stock == "out_of_stock" %}<span class="stock stock-out">Sold out</span>
+          {% else %}<span class="stock {{ 'stock-low' if p.stock == 'low_stock' else 'stock-in' }}">{{ p.stock_qty }} in stock</span>{% endif %}
+        </td>
+        <td>
+          <form method="post" action="{{ url_for('admin.product_publish', product_id=p.id) }}" class="flex items-center gap-2">
+            {{ csrf_field() }}<input type="hidden" name="back" value="list">
+            <input type="hidden" name="publish" value="{{ '0' if p.is_published else '1' }}">
+            <span class="status {{ 'status-success' if p.is_published else 'status-neutral' }}">{{ "Live" if p.is_published else "Draft" }}</span>
+            <button class="link-muted text-xs underline underline-offset-4" aria-label="{{ 'Hide' if p.is_published else 'Publish' }} {{ p.name }}">{{ "Hide" if p.is_published else "Publish" }}</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{{ pager(page, "products") }}
+{% else %}
+<div class="panel text-center">
+  <p class="font-bold text-ink">No products match</p>
+  <p class="meta mt-1">Try another filter, or add a product.</p>
+</div>
+{% endif %}
+{% endblock %}

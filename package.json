@@ -1,0 +1,12 @@
+{
+  "name": "keyora",
+  "private": true,
+  "scripts": {
+    "build:css": "tailwindcss -i app/static/src/input.css -o app/static/css/output.css --minify",
+    "watch:css": "tailwindcss -i app/static/src/input.css -o app/static/css/output.css --watch"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.3.5",
+    "tailwindcss": "^4.3.5"
+  }
+}

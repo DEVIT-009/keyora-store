@@ -1,0 +1,52 @@
+{# Admin-only display helpers. Import with context (they read request / label maps):
+   {% from "admin/_macros.html" import order_status, fulfillment_status, pager, filter_chip, when with context %} #}
+
+{% set STATUS_TONES = {"paid": "success", "paid_late": "warning", "pending": "info", "expired": "neutral", "cancelled": "neutral"} %}
+{% set FULFILLMENT_TONES = {"unfulfilled": "neutral", "packed": "info", "shipped": "info", "delivered": "success", "refunded": "warning"} %}
+
+{% macro order_status(order) -%}
+<span class="status status-{{ STATUS_TONES[order.status] }}">{{ STATUS_LABELS[order.status] }}</span>
+{%- if order.review_reason %} <span class="status status-danger" title="{{ order.review_reason }}">Review</span>{% endif %}
+{%- endmacro %}
+
+{% macro fulfillment_status(order) -%}
+<span class="status status-{{ FULFILLMENT_TONES[order.fulfillment] }}">{{ FULFILLMENT_LABELS[order.fulfillment] }}</span>
+{%- endmacro %}
+
+{# Store-local (Cambodia) date/time. #}
+{% macro when(dt, with_time=True) -%}
+{% if dt %}{% set local = local_time(dt) %}<time datetime="{{ dt.isoformat() }}">{{ local.strftime("%-d %b %Y" ~ (", %H:%M" if with_time else "")) }}</time>{% else %}—{% endif %}
+{%- endmacro %}
+
+{# Link to the current list with some query args changed (page reset unless given). #}
+{% macro list_url(changes) -%}
+{% set args = request.args.to_dict() %}{% set _ = args.pop("page", None) %}{% set _ = args.update(changes) %}
+{%- for k, v in args.copy().items() if v in (None, "") %}{% set _ = args.pop(k) %}{% endfor -%}
+{%- set _ = args.update(request.view_args) -%}
+{{ url_for(request.endpoint, **args) }}
+{%- endmacro %}
+
+{% macro filter_chip(label, changes, active) -%}
+<a href="{{ list_url(changes) }}" class="chip"{% if active %} aria-current="page"{% endif %}>{{ label }}</a>
+{%- endmacro %}
+
+{% macro pager(page, noun="results") -%}
+<div class="flex flex-wrap items-center justify-between gap-3 text-sm">
+  <p class="text-muted">{{ page.total }} {{ noun }}{% if page.pages > 1 %} · page {{ page.page }} of {{ page.pages }}{% endif %}</p>
+  {% if page.pages > 1 %}
+  <div class="flex gap-2">
+    {% if page.has_prev %}<a href="{{ list_url({'page': page.page - 1}) }}" class="btn btn-secondary btn-sm">Previous</a>{% endif %}
+    {% if page.has_next %}<a href="{{ list_url({'page': page.page + 1}) }}" class="btn btn-secondary btn-sm">Next</a>{% endif %}
+  </div>
+  {% endif %}
+</div>
+{%- endmacro %}
+
+{% macro search_form(q, placeholder, keep=()) -%}
+<form method="get" class="flex w-full max-w-md gap-2" role="search">
+  {% for name in keep %}{% if request.args.get(name) %}<input type="hidden" name="{{ name }}" value="{{ request.args.get(name) }}">{% endif %}{% endfor %}
+  <label for="q" class="sr-only">Search</label>
+  <input id="q" name="q" type="search" class="input h-10" value="{{ q }}" placeholder="{{ placeholder }}">
+  <button class="btn btn-secondary btn-sm h-10">Search</button>
+</form>
+{%- endmacro %}

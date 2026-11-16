@@ -1,0 +1,33 @@
+{# Form helpers. Import with context so `field` can read the page's `errors`:
+   {% from "components/forms.html" import field, error_summary, csrf_field with context %} #}
+
+{# Every POST form needs this (Flask-WTF CSRFProtect is on for the whole app). #}
+{% macro csrf_field() -%}
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+{%- endmacro %}
+
+{# Label + control + error for one field. The caller receives the id/name/aria attributes. #}
+{% macro field(name, label, hint=None, optional=False) -%}
+{% set error = errors.get(name) %}
+<div>
+  <label for="{{ name }}" class="label">{{ label }}{% if optional %} <span class="font-medium text-muted">(optional)</span>{% endif %}</label>
+  {% set attrs = 'id="' ~ name ~ '" name="' ~ name ~ '"' %}
+  {% if error %}{% set attrs = attrs ~ ' aria-invalid="true" aria-describedby="' ~ name ~ '-error"' %}
+  {% elif hint %}{% set attrs = attrs ~ ' aria-describedby="' ~ name ~ '-hint"' %}{% endif %}
+  {{ caller(attrs|safe) }}
+  {% if error %}<p id="{{ name }}-error" class="field-error">{{ error }}</p>
+  {% elif hint %}<p id="{{ name }}-hint" class="meta mt-1.5">{{ hint }}</p>{% endif %}
+</div>
+{%- endmacro %}
+
+{# Linked list of errors at the top of a form. #}
+{% macro error_summary(errors) -%}
+{% if errors %}
+<div class="rounded-card bg-danger-soft px-4 py-3 text-sm text-danger" role="alert">
+  <p class="font-bold">Please check {{ "this field" if errors|length == 1 else "these %d fields"|format(errors|length) }}:</p>
+  <ul class="mt-1 list-disc pl-5">
+    {% for name, message in errors.items() %}<li><a href="#{{ name }}" class="underline underline-offset-2">{{ message }}</a></li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+{%- endmacro %}

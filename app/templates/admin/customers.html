@@ -1,0 +1,46 @@
+{% extends "admin/_layout.html" %}
+{% from "admin/_macros.html" import when, pager, filter_chip, search_form with context %}
+
+{% block title %}Customers · Keyora admin{% endblock %}
+
+{% block admin %}
+<div class="flex flex-wrap items-end justify-between gap-4">
+  <div>
+    <p class="eyebrow">Admin</p>
+    <h1 class="mt-2 text-h2">Customers</h1>
+  </div>
+  {{ search_form(q, "Name or email", keep=("role", "status")) }}
+</div>
+
+<div class="scroller flex gap-2" aria-label="Role">
+  {{ filter_chip("Everyone", {"role": None}, not role) }}
+  {{ filter_chip("Customers", {"role": "user"}, role == "user") }}
+  {{ filter_chip("Admins", {"role": "admin"}, role == "admin") }}
+  {{ filter_chip("Blocked", {"status": None if blocked else "blocked"}, blocked) }}
+</div>
+
+{% if page.items %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th scope="col">Customer</th><th scope="col">Phone</th><th scope="col">Joined</th><th scope="col" class="text-right">Orders</th><th scope="col" class="text-right">Spent</th></tr></thead>
+    <tbody>
+      {% for c in page.items %}
+      <tr>
+        <td class="max-w-72">
+          <a href="{{ url_for('admin.customer_detail', user_id=c.id) }}" class="block truncate font-bold text-ink hover:underline">{{ c.name or "—" }}</a>
+          <span class="flex items-center gap-2 text-muted"><span class="truncate">{{ c.email }}</span>{% if c.role == "admin" %}<span class="status status-info">Admin</span>{% endif %}{% if c.blocked %}<span class="status status-danger">Blocked</span>{% endif %}</span>
+        </td>
+        <td class="whitespace-nowrap text-muted">{{ format_phone(c.phone) if c.phone else "—" }}</td>
+        <td class="whitespace-nowrap text-muted">{{ when(c.created_at, with_time=False) }}</td>
+        <td class="text-right">{{ c.orders }}</td>
+        <td class="text-right font-semibold text-ink">{{ c.spent|money }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{{ pager(page, "accounts") }}
+{% else %}
+<p class="panel text-center text-muted">No accounts match.</p>
+{% endif %}
+{% endblock %}

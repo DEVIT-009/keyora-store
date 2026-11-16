@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Please try again · Keyora{% endblock %}
+{% block content %}
+<section class="container-page section">
+  <div class="panel mx-auto flex max-w-xl flex-col items-center px-6 py-14 text-center">
+    <h1 class="text-h3">Please try again</h1>
+    <p class="mt-2 text-muted">This page was open for a while or your session changed, so we couldn't submit the form safely. Go back, refresh the page and try again.</p>
+    <a href="{{ url_for('main.index') }}" class="btn btn-primary mt-8">Back to the store</a>
+  </div>
+</section>
+{% endblock %}

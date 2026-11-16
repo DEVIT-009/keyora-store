@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% from "components/macros.html" import icon, price, stock_status, product_card %}
+
+{% block title %}Your cart · Keyora{% endblock %}
+
+{% block content %}
+<div class="container-page section-tight pb-0 md:pb-0">
+  <p class="eyebrow">Cart</p>
+  <h1 class="mt-3 text-h2">Your cart</h1>
+  {% if cart.lines %}<p class="meta mt-2">{{ cart.item_count }} item{{ "" if cart.item_count == 1 else "s" }}</p>{% endif %}
+</div>
+
+{% if cart.lines %}
+<section class="container-page section-tight grid gap-10 lg:grid-cols-12 lg:gap-12 xl:gap-16" aria-label="Cart items">
+  <div class="lg:col-span-8">
+    {# Free-shipping progress #}
+    <div class="mb-6">
+      {% if cart.free_shipping_remaining %}
+      <p class="text-sm text-ink">You're <strong>{{ cart.free_shipping_remaining|money }}</strong> away from free shipping.</p>
+      {% else %}
+      <p class="text-sm font-semibold text-success">You've unlocked free shipping.</p>
+      {% endif %}
+      <div class="mt-2.5 h-1.5 overflow-hidden rounded-full bg-surface-strong" role="progressbar"
+           aria-label="Progress to free shipping" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ cart.free_shipping_progress }}">
+        <div class="h-full rounded-full {{ 'bg-success' if not cart.free_shipping_remaining else 'bg-ink' }}" style="width: {{ cart.free_shipping_progress }}%"></div>
+      </div>
+    </div>
+
+    {% if cart.has_unavailable %}
+    <p class="mb-6 rounded-card bg-warning-soft px-4 py-3 text-sm font-semibold text-warning">
+      Some items have sold out since you added them. Remove them to check out.
+    </p>
+    {% endif %}
+
+    <ul class="divide-y border-y">
+      {% for line in cart.lines %}
+      {% set p = line.product %}
+      {% set url = url_for("main.product", slug=p.slug) %}
+      <li class="grid grid-cols-[6rem_1fr] gap-4 py-6 sm:grid-cols-[8rem_1fr] sm:gap-6">
+        <a href="{{ url }}" class="media media-cover {{ 'opacity-50' if line.unavailable }}" tabindex="-1" aria-hidden="true">
+          <img src="{{ img_url(p.image, 256, 256) }}" srcset="{{ img_srcset(p.image, [192, 256, 384], 1) }}"
+               sizes="(min-width: 40rem) 8rem, 6rem" alt="" loading="lazy" decoding="async">
+        </a>
+
+        <div class="flex min-w-0 flex-col">
+          <div class="flex items-start justify-between gap-4">
+            <div class="min-w-0">
+              <h2 class="product-title"><a href="{{ url }}" class="hover:underline hover:underline-offset-4">{{ p.name }}</a></h2>
+              {% if line.options %}<p class="meta mt-0.5">{{ line.options }}</p>{% endif %}
+            </div>
+            <p class="shrink-0 text-right font-bold text-ink {{ 'text-muted line-through' if line.unavailable }}">{{ line.total|money }}</p>
+          </div>
+
+          <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+            {{ price(p, "text-sm font-semibold", line.variant) }}
+            {% if line.unavailable or line.variant.stock in ("low_stock", "preorder") %}
+            {{ stock_status(line.variant, p.preorder_ships) }}
+            {% endif %}
+          </div>
+
+          <div class="mt-auto flex items-center justify-between gap-4 pt-4">
+            {% if line.unavailable %}
+            <span class="meta">Unavailable</span>
+            {% else %}
+            <form method="post" action="{{ url_for('cart.update') }}" class="qty-stepper">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="variant_id" value="{{ line.variant.id }}">
+              <button name="quantity" value="{{ line.quantity - 1 }}" aria-label="Decrease quantity of {{ p.name }}" {{ "disabled" if line.quantity <= 1 }}>{{ icon("minus", "size-4") }}</button>
+              <output aria-label="Quantity">{{ line.quantity }}</output>
+              <button name="quantity" value="{{ line.quantity + 1 }}" aria-label="Increase quantity of {{ p.name }}" {{ "disabled" if line.quantity >= line.max_qty }}>{{ icon("plus", "size-4") }}</button>
+            </form>
+            {% endif %}
+            <form method="post" action="{{ url_for('cart.remove') }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="variant_id" value="{{ line.variant.id }}">
+              <button class="link-muted text-sm font-semibold underline underline-offset-4" aria-label="Remove {{ p.name }}">Remove</button>
+            </form>
+          </div>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  {# ---------- Summary ---------- #}
+  <aside class="lg:col-span-4" aria-labelledby="summary-heading">
+    <div class="panel lg:sticky lg:top-[calc(var(--header-h)+2rem)]">
+      <h2 id="summary-heading" class="text-h4">Order summary</h2>
+      <dl class="mt-5 space-y-3 text-sm">
+        <div class="flex justify-between gap-4">
+          <dt class="text-muted">Subtotal · {{ cart.item_count }} item{{ "" if cart.item_count == 1 else "s" }}</dt>
+          <dd class="font-semibold text-ink">{{ cart.subtotal|money }}</dd>
+        </div>
+        {% if cart.savings %}
+        <div class="flex justify-between gap-4">
+          <dt class="text-muted">You save</dt>
+          <dd class="font-semibold text-sale">−{{ cart.savings|money }}</dd>
+        </div>
+        {% endif %}
+        <div class="flex justify-between gap-4">
+          <dt class="text-muted">Shipping</dt>
+          <dd class="font-semibold text-ink">{{ "Free" if not cart.free_shipping_remaining else "Calculated at checkout" }}</dd>
+        </div>
+        <div class="flex items-baseline justify-between gap-4 border-t pt-4" style="border-color: var(--color-line-strong)">
+          <dt class="font-bold text-ink">Estimated total</dt>
+          <dd class="text-h4 text-ink">{{ cart.subtotal|money }}</dd>
+        </div>
+      </dl>
+      <p class="meta mt-1">Taxes included.</p>
+
+      {% if cart.can_checkout %}
+      <a href="{{ url_for('checkout.view') }}" class="btn btn-primary btn-lg btn-block mt-6">Checkout</a>
+      {% else %}
+      <button type="button" class="btn btn-primary btn-lg btn-block mt-6" disabled>Checkout</button>
+      {% endif %}
+      <a href="{{ url_for('main.index') }}" class="link-arrow mt-4 w-full justify-center">Continue shopping</a>
+
+      <ul class="mt-6 space-y-3 border-t pt-6" style="border-color: var(--color-line-strong)">
+        {% for perk in perks if perk.icon != "swap" %}
+        <li class="flex items-center gap-3 text-sm">
+          <span class="grid size-8 shrink-0 place-items-center rounded-full bg-white text-ink">{{ icon(perk.icon, "size-4") }}</span>
+          <span><span class="font-bold text-ink">{{ perk.title }}</span> <span class="text-muted">· {{ perk.body }}</span></span>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </aside>
+</section>
+
+{% else %}
+{# ---------- Empty state ---------- #}
+<section class="container-page section-tight">
+  <div class="panel flex flex-col items-center px-6 py-14 text-center md:py-20">
+    <span class="grid size-16 place-items-center rounded-full bg-white text-ink">{{ icon("bag", "size-7") }}</span>
+    <h2 class="mt-6 text-h3">Your cart is empty</h2>
+    <p class="mt-2 max-w-sm text-muted">Find a board that fits your desk and the way you type.</p>
+    <a href="{{ url_for('main.index') }}#best-sellers" class="btn btn-primary mt-8">Shop keyboards</a>
+  </div>
+</section>
+
+{% if popular %}
+<section class="section pt-0" aria-labelledby="popular-heading">
+  <div class="container-page">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">Most loved</p>
+        <h2 id="popular-heading" class="mt-3">Popular right now</h2>
+      </div>
+    </div>
+    <div class="grid-products md:grid-cols-2 lg:grid-cols-4">
+      {% for p in popular %}{{ product_card(p) }}{% endfor %}
+    </div>
+  </div>
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

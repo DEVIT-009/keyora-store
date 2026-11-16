@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% from "components/macros.html" import icon, product_card %}
+
+{% block title %}{{ category.name }} · Keyora{% endblock %}
+
+{% block content %}
+
+{# ---------- Banner ---------- #}
+<div class="container-page section-tight pb-0 md:pb-0">
+  <nav aria-label="Breadcrumb">
+    <ol class="breadcrumb">
+      <li><a href="{{ url_for('main.index') }}">Home</a></li>
+      <li><a href="{{ url_for('main.categories') }}">All categories</a></li>
+      {% if layout %}
+      <li><a href="{{ url_for('main.category', slug=category.slug) }}">{{ category.name }}</a></li>
+      <li aria-current="page">{{ layout }}</li>
+      {% else %}
+      <li aria-current="page">{{ category.name }}</li>
+      {% endif %}
+    </ol>
+  </nav>
+
+  <div class="scrim scrim-strong tile mt-6 min-h-64 md:min-h-80">
+    <img src="{{ img_url(art.image, 1600, 600) }}"
+         srcset="{{ img_srcset(art.image, [800, 1280, 1920, 2560], 0.375) }}"
+         sizes="(min-width: 90rem) 1440px, 100vw"
+         alt="" fetchpriority="high">
+    <p class="eyebrow">Shop</p>
+    <h1 class="mt-3 text-h1">{{ category.name }}</h1>
+    {% if art.body %}<p class="lead mt-2 max-w-xl">{{ art.body }}</p>{% endif %}
+  </div>
+</div>
+
+{# ---------- Category + layout filters ---------- #}
+<div class="container-page mt-6 flex flex-col gap-4 md:mt-8">
+  <nav aria-label="Categories">
+    <ul class="-mx-[var(--gutter)] flex gap-2 overflow-x-auto px-[var(--gutter)] [scrollbar-width:none] md:mx-0 md:flex-wrap md:px-0">
+      <li><a href="{{ url_for('main.categories') }}" class="chip shrink-0">All categories</a></li>
+      {% for c in categories %}
+      <li><a href="{{ url_for('main.category', slug=c.slug) }}" class="chip shrink-0"{% if c.id == category.id %} aria-current="page"{% endif %}>{{ c.name }}</a></li>
+      {% endfor %}
+    </ul>
+  </nav>
+
+  <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t pt-4">
+    {% if layouts|length > 1 %}
+    <nav aria-label="Filter by layout">
+      <ul class="flex flex-wrap items-center gap-2">
+        <li class="mr-1 text-sm font-semibold text-ink">Layout</li>
+        <li><a href="{{ url_for('main.category', slug=category.slug) }}" class="chip"{% if not layout %} aria-current="page"{% endif %}>All</a></li>
+        {% for size, count in layouts %}
+        <li><a href="{{ url_for('main.category', slug=category.slug, layout=size) }}" class="chip"
+               {% if size == layout %} aria-current="page"{% endif %}>{{ size }} <span class="opacity-60">{{ count }}</span></a></li>
+        {% endfor %}
+      </ul>
+    </nav>
+    {% endif %}
+    {% if products %}<p class="meta ml-auto">{{ products|length }} product{{ "" if products|length == 1 else "s" }}</p>{% endif %}
+  </div>
+</div>
+
+{# ---------- Products ---------- #}
+<section class="container-page section-tight pb-[var(--section-space)]" aria-label="{{ category.name }}">
+  {% if products %}
+  <div class="grid-products">
+    {% for p in products %}{{ product_card(p) }}{% endfor %}
+  </div>
+  {% else %}
+  <div class="panel flex flex-col items-center px-6 py-16 text-center">
+    <span class="grid size-14 place-items-center rounded-full bg-white text-ink">{{ icon("bag", "size-6") }}</span>
+    <p class="mt-5 font-bold text-ink">{{ category.name }} are coming soon</p>
+    <p class="meta mt-1 max-w-sm">We're still stocking this category. In the meantime, every keyboard ships ready to type on.</p>
+    <div class="mt-6 flex flex-wrap justify-center gap-3">
+      <a href="{{ url_for('main.category', slug='keyboards') }}" class="btn btn-primary btn-sm">Shop keyboards</a>
+      <a href="{{ url_for('main.categories') }}" class="btn btn-secondary btn-sm">All categories</a>
+    </div>
+  </div>
+  {% endif %}
+</section>
+
+{% endblock %}

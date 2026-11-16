@@ -1,0 +1,54 @@
+{% extends "admin/_layout.html" %}
+{% from "components/forms.html" import field, csrf_field with context %}
+
+{% block title %}Categories · Keyora admin{% endblock %}
+
+{% block admin %}
+<div>
+  <p class="eyebrow">Admin</p>
+  <h1 class="mt-2 text-h2">Categories</h1>
+  <p class="meta mt-2 max-w-2xl">The order here is the order in menus and on /categories. Banner art and copy for a category come from <code class="font-mono">CATEGORY_ART</code> in <code class="font-mono">app/main/data.py</code>; a new slug uses the default art.</p>
+</div>
+
+<ul class="card divide-y p-0 md:p-0">
+  {% for c, count in categories %}
+  <li class="flex flex-wrap items-center gap-3 px-5 py-4 md:px-6">
+    <span class="flex flex-col">
+      {% if not loop.first %}
+      <form method="post" action="{{ url_for('admin.category_move', category_id=c.id) }}">{{ csrf_field() }}<input type="hidden" name="direction" value="up"><button class="btn btn-ghost btn-icon size-7" aria-label="Move {{ c.name }} up">▲</button></form>
+      {% endif %}
+      {% if not loop.last %}
+      <form method="post" action="{{ url_for('admin.category_move', category_id=c.id) }}">{{ csrf_field() }}<input type="hidden" name="direction" value="down"><button class="btn btn-ghost btn-icon size-7" aria-label="Move {{ c.name }} down">▼</button></form>
+      {% endif %}
+    </span>
+    <span class="min-w-0 flex-1">
+      <span class="block font-bold text-ink">{{ c.name }}</span>
+      <span class="block text-sm text-muted">/categories/{{ c.slug }} · <a href="{{ url_for('admin.product_list', category=c.id) }}" class="link-muted underline underline-offset-4">{{ count }} product{{ "" if count == 1 else "s" }}</a></span>
+    </span>
+    <span class="flex items-center gap-4 text-sm font-semibold">
+      <a href="{{ url_for('admin.category_edit', category_id=c.id) }}#category-form" class="link">Edit</a>
+      {% if count == 0 %}
+      <form method="post" action="{{ url_for('admin.category_delete', category_id=c.id) }}">{{ csrf_field() }}<button class="link-muted underline underline-offset-4" aria-label="Delete {{ c.name }}">Delete</button></form>
+      {% endif %}
+    </span>
+  </li>
+  {% else %}
+  <li class="px-5 py-4 text-muted">No categories yet.</li>
+  {% endfor %}
+</ul>
+
+<section id="category-form" class="card" aria-labelledby="category-form-heading">
+  <h2 id="category-form-heading" class="text-h4">{{ "Edit " ~ editing.name if editing else "Add a category" }}</h2>
+  <form method="post" action="{{ url_for('admin.category_edit', category_id=editing.id) if editing else url_for('admin.category_create') }}" novalidate class="mt-4 flex flex-col gap-5">
+    {{ csrf_field() }}
+    <div class="grid gap-5 sm:grid-cols-2">
+      {% call(attrs) field("name", "Name") %}<input {{ attrs }} class="input" maxlength="80" value="{{ data.name }}">{% endcall %}
+      {% call(attrs) field("slug", "Slug", hint="Leave blank to build it from the name. Changing it breaks old links.", optional=True) %}<input {{ attrs }} class="input" maxlength="80" value="{{ data.slug }}">{% endcall %}
+    </div>
+    <div class="flex gap-3">
+      <button class="btn btn-primary btn-sm">{{ "Save category" if editing else "Add category" }}</button>
+      {% if editing %}<a href="{{ url_for('admin.category_list') }}" class="btn btn-ghost btn-sm">Cancel</a>{% endif %}
+    </div>
+  </form>
+</section>
+{% endblock %}

@@ -1,0 +1,105 @@
+{% extends "admin/_layout.html" %}
+{% from "admin/_macros.html" import order_status, fulfillment_status, when with context %}
+
+{% block title %}Dashboard · Keyora admin{% endblock %}
+
+{% block admin %}
+<div>
+  <p class="eyebrow">Admin</p>
+  <h1 class="mt-2 text-h2">Dashboard</h1>
+</div>
+
+{% set a = stats.attention %}
+<section aria-labelledby="attention-heading">
+  <h2 id="attention-heading" class="text-h4">Needs attention</h2>
+  <ul class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    {% for count, label, body, url, tone in [
+      (a.to_ship, "To ship", "Paid, not shipped yet", url_for("admin.order_list", status="paid", fulfillment="unfulfilled"), "info"),
+      (a.review, "Payment review", "Payment found but didn't verify", url_for("admin.order_list", flagged=1), "danger"),
+      (a.paid_late, "Paid late", "Fulfil or refund by bank transfer", url_for("admin.order_list", status="paid_late", fulfillment="unfulfilled"), "warning"),
+      (a.pending, "Awaiting payment", "QR still open", url_for("admin.order_list", status="pending"), "neutral"),
+    ] %}
+    <li>
+      <a href="{{ url }}" class="card flex h-full flex-col gap-1 transition-colors hover:border-ink">
+        <span class="flex items-center justify-between gap-3">
+          <span class="font-bold text-ink">{{ label }}</span>
+          <span class="status status-{{ tone if count else 'neutral' }}">{{ count }}</span>
+        </span>
+        <span class="meta">{{ body }}</span>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+
+<section aria-labelledby="revenue-heading">
+  <h2 id="revenue-heading" class="text-h4">Revenue</h2>
+  <p class="meta mt-1">Paid KHQR orders (including paid late), by payment time.</p>
+  <dl class="mt-4 grid gap-3 sm:grid-cols-3">
+    {% for label, total, count in stats.revenue %}
+    <div class="panel md:p-6">
+      <dt class="meta">{{ label }}</dt>
+      <dd class="mt-2 text-h3 text-ink">{{ total|money }}</dd>
+      <dd class="meta mt-1">{{ count }} order{{ "" if count == 1 else "s" }}</dd>
+    </div>
+    {% endfor %}
+  </dl>
+</section>
+
+<div class="grid gap-8 xl:grid-cols-2">
+  <section aria-labelledby="latest-heading" class="min-w-0">
+    <div class="flex items-center justify-between gap-3">
+      <h2 id="latest-heading" class="text-h4">Latest orders</h2>
+      <a href="{{ url_for('admin.order_list') }}" class="link text-sm">All orders</a>
+    </div>
+    {% if stats.latest %}
+    <div class="table-wrap mt-4">
+      <table class="data-table">
+        <thead><tr><th scope="col">Order</th><th scope="col">Placed</th><th scope="col">Status</th><th scope="col" class="text-right">Total</th></tr></thead>
+        <tbody>
+          {% for o in stats.latest %}
+          <tr>
+            <td><a href="{{ url_for('admin.order_detail', ref=o.ref) }}" class="link whitespace-nowrap">{{ o.ref }}</a></td>
+            <td class="whitespace-nowrap text-muted">{{ when(o.created_at) }}</td>
+            <td><span class="flex flex-wrap gap-1">{{ order_status(o) }} {% if o.status in ("paid", "paid_late") %}{{ fulfillment_status(o) }}{% endif %}</span></td>
+            <td class="text-right font-semibold text-ink">{{ o.total|money }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="panel mt-4 text-muted">No orders yet.</p>
+    {% endif %}
+  </section>
+
+  <section aria-labelledby="stock-heading" class="min-w-0">
+    <div class="flex items-center justify-between gap-3">
+      <h2 id="stock-heading" class="text-h4">Low stock</h2>
+      <a href="{{ url_for('admin.product_list', stock='low_stock') }}" class="link text-sm">All products</a>
+    </div>
+    {% if stats.low_stock %}
+    <div class="table-wrap mt-4">
+      <table class="data-table">
+        <thead><tr><th scope="col">Variant</th><th scope="col">SKU</th><th scope="col" class="text-right">Left</th></tr></thead>
+        <tbody>
+          {% for v in stats.low_stock %}
+          <tr>
+            <td>
+              <a href="{{ url_for('admin.product_edit', product_id=v.product_id) }}#variants" class="font-semibold text-ink hover:underline">{{ v.product.name }}</a>
+              {% set opts = [v.color_name, v.switch_type]|select|join(" · ") %}
+              {% if opts %}<span class="block text-muted">{{ opts }}</span>{% endif %}
+            </td>
+            <td class="whitespace-nowrap text-muted">{{ v.sku }}</td>
+            <td class="text-right"><span class="stock {{ 'stock-out' if v.stock_qty == 0 else 'stock-low' }}">{{ v.stock_qty }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="panel mt-4 text-muted">Every variant has more than a few left.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

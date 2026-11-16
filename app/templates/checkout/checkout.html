@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% from "components/macros.html" import icon %}
+{% from "components/forms.html" import field, error_summary, csrf_field with context %}
+
+{% block title %}Checkout · Keyora{% endblock %}
+
+{% block content %}
+<div class="container-page section-tight pb-0 md:pb-0">
+  <nav aria-label="Breadcrumb">
+    <ol class="breadcrumb">
+      <li><a href="{{ url_for('cart.view') }}">Cart</a></li>
+      <li aria-current="page">Checkout</li>
+    </ol>
+  </nav>
+  <h1 class="mt-4 text-h2">Checkout</h1>
+</div>
+
+<form method="post" action="{{ url_for('checkout.place_order') }}" novalidate data-checkout
+      class="container-page section-tight grid gap-10 lg:grid-cols-12 lg:gap-12 xl:gap-16">
+  {{ csrf_field() }}
+  <div class="steps flex flex-col gap-10 lg:col-span-7">
+
+    {{ error_summary(errors) }}
+    {% if unavailable %}
+    <p class="notice notice-info" role="alert">KHQR payments are temporarily unavailable, so your order wasn't placed. Please try again in a few minutes.</p>
+    {% endif %}
+
+    {# ---------- 1. Contact ---------- #}
+    <section aria-labelledby="contact-heading">
+      <h2 id="contact-heading" class="step-title">Contact</h2>
+      <div class="mt-5 grid gap-5 sm:grid-cols-2">
+        {% call(attrs) field("email", "Email") %}
+        <input {{ attrs }} type="email" class="input" autocomplete="email" inputmode="email" required value="{{ data.email }}" placeholder="you@example.com">
+        {% endcall %}
+        {% call(attrs) field("phone", "Phone", hint="We'll contact you about your order.") %}
+        <input {{ attrs }} type="tel" class="input" autocomplete="tel" inputmode="tel" required value="{{ data.phone }}" placeholder="012 345 678">
+        {% endcall %}
+      </div>
+    </section>
+
+    {# ---------- 2. Shipping address ---------- #}
+    <section class="border-t pt-10" aria-labelledby="address-heading">
+      <h2 id="address-heading" class="step-title">Shipping address</h2>
+      <div class="mt-5 grid gap-5">
+        {% call(attrs) field("receiver_name", "Receiver name") %}
+        <input {{ attrs }} type="text" class="input" autocomplete="name" required maxlength="80" value="{{ data.receiver_name }}">
+        {% endcall %}
+        <fieldset class="grid gap-5 disabled:opacity-50" data-address {{ "disabled" if data.delivery == "pickup" }}>
+          {% call(attrs) field("province", "Province / City") %}
+          <select {{ attrs }} class="input" autocomplete="address-level1" required>
+            <option value="" disabled {{ "selected" if not data.province }}>Choose a province or city</option>
+            {% for province in forms.PROVINCES %}<option {{ "selected" if data.province == province }}>{{ province }}</option>{% endfor %}
+          </select>
+          {% endcall %}
+          {% call(attrs) field("address", "Address details") %}
+          <textarea {{ attrs }} class="input min-h-24" autocomplete="street-address" required maxlength="300" rows="3"
+                    placeholder="House no., street, sangkat / commune, khan / district">{{ data.address }}</textarea>
+          {% endcall %}
+        </fieldset>
+        <p class="meta" data-pickup-note {{ "hidden" if data.delivery != "pickup" }}>Not needed for pickup. Bring your order number to {{ forms.PICKUP_LOCATION }}.</p>
+      </div>
+    </section>
+
+    {# ---------- 3. Delivery ---------- #}
+    <section class="border-t pt-10" aria-labelledby="delivery-heading">
+      <h2 id="delivery-heading" class="step-title">Delivery</h2>
+      <fieldset class="mt-5 grid gap-3 sm:grid-cols-2" {{ 'aria-invalid="true"'|safe if errors.delivery }}>
+        <legend class="sr-only">Delivery method</legend>
+        {% for value, method in forms.DELIVERY_METHODS.items() %}
+        {% set fee = delivery_fee if value == "delivery" else 0 %}
+        <label class="option-card">
+          <input type="radio" name="delivery" value="{{ value }}" {{ "checked" if data.delivery == value }} data-fee="{{ fee }}">
+          <span class="flex-1">
+            <span class="flex items-center justify-between gap-3">
+              <span class="flex items-center gap-2 font-bold text-ink">{{ icon("truck" if value == "delivery" else "store", "size-5") }}{{ method.label }}</span>
+              <span class="text-sm font-bold {{ 'text-success' if not fee else 'text-ink' }}">{{ fee|money if fee else "Free" }}</span>
+            </span>
+            <span class="meta mt-1 block">{{ method.body }}</span>
+          </span>
+        </label>
+        {% endfor %}
+      </fieldset>
+      {% if errors.delivery %}<p class="field-error">{{ errors.delivery }}</p>{% endif %}
+      <div class="mt-5">
+        {% call(attrs) field("note", "Note", optional=True) %}
+        <textarea {{ attrs }} class="input min-h-24" maxlength="500" rows="3" placeholder="Gate code, landmark, best time to call…">{{ data.note }}</textarea>
+        {% endcall %}
+      </div>
+    </section>
+
+    {# ---------- 4. Payment ---------- #}
+    <section class="border-t pt-10" aria-labelledby="payment-heading">
+      <h2 id="payment-heading" class="step-title">Payment</h2>
+      <fieldset class="mt-5">
+        <legend class="sr-only">Payment method</legend>
+        <label class="option-card">
+          <input type="radio" name="payment" value="khqr" checked>
+          <span class="flex-1">
+            <span class="flex items-center justify-between gap-3">
+              <span class="flex items-center gap-2 font-bold text-ink">{{ icon("qr", "size-5") }}Pay with KHQR</span>
+              <span class="badge badge-neutral">KHQR</span>
+            </span>
+            <span class="meta mt-1 block">After you place your order, scan the QR code with any banking app that supports KHQR.</span>
+          </span>
+        </label>
+      </fieldset>
+    </section>
+  </div>
+
+  {# ---------- Summary ---------- #}
+  <aside class="lg:col-span-5" aria-labelledby="summary-heading">
+    <div class="panel lg:sticky lg:top-[calc(var(--header-h)+2rem)]">
+      <div class="flex items-baseline justify-between gap-4">
+        <h2 id="summary-heading" class="text-h4">Order summary</h2>
+        <a href="{{ url_for('cart.view') }}" class="link text-sm">Edit cart</a>
+      </div>
+
+      <ul class="mt-5 space-y-4">
+        {% for line in cart.lines %}
+        <li class="flex items-center gap-4">
+          <span class="relative shrink-0">
+            <span class="media media-cover block size-16 bg-white">
+              <img src="{{ img_url(line.product.image, 128, 128) }}" alt="" decoding="async">
+            </span>
+            <span class="count-bubble -top-1.5 -right-1.5" aria-hidden="true">{{ line.quantity }}</span>
+          </span>
+          <span class="min-w-0 flex-1 text-sm">
+            <span class="block truncate font-bold text-ink">{{ line.product.name }}</span>
+            <span class="block text-muted">{{ line.options }}{% if line.quantity > 1 %} · {{ line.quantity }} × {{ line.unit_price|money }}{% endif %}</span>
+            <span class="sr-only">Quantity {{ line.quantity }}</span>
+          </span>
+          <span class="text-sm font-bold text-ink">{{ line.total|money }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+
+      <dl class="mt-6 space-y-3 border-t pt-5 text-sm" style="border-color: var(--color-line-strong)">
+        <div class="flex justify-between gap-4">
+          <dt class="text-muted">Subtotal</dt>
+          <dd class="font-semibold text-ink">{{ cart.subtotal|money }}</dd>
+        </div>
+        {% if cart.savings %}
+        <div class="flex justify-between gap-4">
+          <dt class="text-muted">You save</dt>
+          <dd class="font-semibold text-sale">−{{ cart.savings|money }}</dd>
+        </div>
+        {% endif %}
+        <div class="flex justify-between gap-4">
+          <dt class="text-muted" data-shipping-label>{{ "Pickup" if data.delivery == "pickup" else "Delivery" }}</dt>
+          <dd class="font-semibold text-ink" data-shipping>{{ shipping|money if shipping else "Free" }}</dd>
+        </div>
+        <div class="flex items-baseline justify-between gap-4 border-t pt-4" style="border-color: var(--color-line-strong)">
+          <dt class="font-bold text-ink">Total</dt>
+          <dd class="text-h4 text-ink" data-total data-subtotal="{{ cart.subtotal }}">{{ (cart.subtotal + shipping)|money }}</dd>
+        </div>
+      </dl>
+      <p class="meta mt-1">Taxes included.</p>
+
+      <button type="submit" class="btn btn-primary btn-lg btn-block mt-6">Place order</button>
+      <p class="meta mt-3 text-center">You'll get a KHQR code to pay right after placing the order.</p>
+    </div>
+  </aside>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Pickup doesn't need an address: disable those fields (so they skip validation) and update the totals.
+  (() => {
+    const form = document.querySelector("[data-checkout]");
+    if (!form) return;
+    const money = (n) => "$" + (Number.isInteger(n) ? n.toLocaleString("en-US") : n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+    const total = form.querySelector("[data-total]");
+    const subtotal = Number(total.dataset.subtotal);
+
+    const update = () => {
+      const choice = form.querySelector('input[name="delivery"]:checked');
+      if (!choice) return;
+      const pickup = choice.value === "pickup";
+      const fee = Number(choice.dataset.fee);
+      form.querySelector("[data-address]").disabled = pickup;
+      form.querySelector("[data-pickup-note]").hidden = !pickup;
+      form.querySelector("[data-shipping-label]").textContent = pickup ? "Pickup" : "Delivery";
+      form.querySelector("[data-shipping]").textContent = fee ? money(fee) : "Free";
+      total.textContent = money(subtotal + fee);
+    };
+    form.addEventListener("change", (e) => { if (e.target.name === "delivery") update(); });
+  })();
+</script>
+{% endblock %}

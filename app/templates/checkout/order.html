@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% from "components/macros.html" import icon %}
+{% from "components/forms.html" import csrf_field with context %}
+
+{% set pickup = order.delivery == "pickup" %}
+{% set paid = order.status in ("paid", "paid_late") %}
+{% set states = {
+  "paid": ("Paid", "stock-in"),
+  "paid_late": ("Paid after expiry", "stock-low"),
+  "pending": ("Awaiting payment", "stock-low"),
+  "expired": ("Expired, not paid", "stock-out"),
+  "cancelled": ("Cancelled", "stock-out"),
+} %}
+
+{% block title %}{{ "Thank you" if paid else "Order " ~ order.ref }} · Keyora{% endblock %}
+
+{% block content %}
+<section class="container-page section-tight">
+  <div class="mx-auto flex max-w-2xl flex-col items-center text-center">
+    {% if paid %}
+    <span class="grid size-16 place-items-center rounded-full bg-success-soft text-success">{{ icon("check", "size-8") }}</span>
+    <p class="eyebrow mt-6">Order {{ order.ref }}</p>
+    <h1 class="mt-3 text-h2">Thank you, {{ order.receiver_name.split()[0] }}!</h1>
+    <p class="lead mt-4">
+      Your KHQR payment of <strong class="text-ink">{{ order.paid_amount|money }}</strong> was received. Updates will go to <strong class="text-ink">{{ order.email }}</strong>.
+      {{ "We'll message you when it's ready to collect." if pickup else "We'll call " ~ forms.format_phone(order.phone) ~ " before delivery." }}
+    </p>
+    {% else %}
+    <span class="grid size-16 place-items-center rounded-full bg-surface text-muted">{{ icon("qr", "size-8") }}</span>
+    <p class="eyebrow mt-6">Order {{ order.ref }}</p>
+    <h1 class="mt-3 text-h2">{{ "This order was cancelled" if order.status == "cancelled" else "This payment code has expired" }}</h1>
+    <p class="lead mt-4">The items went back on sale. You can add them to your cart again and place a new order.</p>
+    <form method="post" action="{{ url_for('checkout.check', ref=order.ref) }}" class="mt-6">
+      {{ csrf_field() }}
+      <button type="submit" class="btn btn-secondary">I already paid for this order</button>
+    </form>
+    {% endif %}
+  </div>
+
+  {% if order.status == "paid_late" %}
+  <div class="mx-auto mt-10 flex max-w-2xl items-start gap-3 rounded-card bg-warning-soft px-4 py-3 text-sm text-warning md:px-5 md:py-4">
+    {{ icon("qr", "size-5 shrink-0") }}
+    <p><strong>Your payment arrived after the code expired.</strong> We've received it and will contact you to confirm stock, or to refund you by bank transfer.</p>
+  </div>
+  {% endif %}
+
+  <div class="mx-auto mt-10 grid max-w-5xl gap-5 md:grid-cols-2">
+    <div class="card">
+      <h2 class="text-h4">Order details</h2>
+      <dl class="mt-5 divide-y border-y text-sm">
+        <div class="grid grid-cols-[7rem_1fr] gap-4 py-3.5">
+          <dt class="text-muted">Contact</dt>
+          <dd class="font-semibold text-ink break-words">{{ order.email }}<br>{{ forms.format_phone(order.phone) }}</dd>
+        </div>
+        <div class="grid grid-cols-[7rem_1fr] gap-4 py-3.5">
+          <dt class="text-muted">{{ "Pickup" if pickup else "Ship to" }}</dt>
+          <dd class="font-semibold text-ink">
+            {{ order.receiver_name }}<br>
+            {% if pickup %}{{ forms.PICKUP_LOCATION }}{% else %}{{ order.address }}<br>{{ order.province }}{% endif %}
+          </dd>
+        </div>
+        <div class="grid grid-cols-[7rem_1fr] gap-4 py-3.5">
+          <dt class="text-muted">Delivery</dt>
+          <dd class="font-semibold text-ink">{{ forms.DELIVERY_METHODS[order.delivery].label }} · <span class="font-medium text-muted">{{ forms.DELIVERY_METHODS[order.delivery].body }}</span></dd>
+        </div>
+        {% if order.note %}
+        <div class="grid grid-cols-[7rem_1fr] gap-4 py-3.5">
+          <dt class="text-muted">Note</dt>
+          <dd class="text-ink break-words">{{ order.note }}</dd>
+        </div>
+        {% endif %}
+        <div class="grid grid-cols-[7rem_1fr] gap-4 py-3.5">
+          <dt class="text-muted">Payment</dt>
+          {% set label, cls = states[order.status] %}
+          <dd class="flex flex-wrap items-center gap-2 font-semibold text-ink">KHQR <span class="stock {{ cls }}">{{ label }}</span></dd>
+        </div>
+        {% if paid and order.fulfillment != "unfulfilled" %}
+        {% set shipping_states = {
+          "packed": ("Packed, " ~ ("ready for pickup soon" if pickup else "shipping soon"), "stock-preorder"),
+          "shipped": ("On its way" if not pickup else "Ready to collect", "stock-preorder"),
+          "delivered": ("Collected" if pickup else "Delivered", "stock-in"),
+          "refunded": ("Refunded", "stock-out"),
+        } %}
+        {% set ship_label, ship_cls = shipping_states[order.fulfillment] %}
+        <div class="grid grid-cols-[7rem_1fr] gap-4 py-3.5">
+          <dt class="text-muted">Status</dt>
+          <dd class="font-semibold text-ink">
+            <span class="stock {{ ship_cls }}">{{ ship_label }}</span>
+            {% if order.tracking and order.fulfillment in ("shipped", "delivered") %}<span class="mt-1 block font-medium break-words text-muted">{{ order.tracking }}</span>{% endif %}
+          </dd>
+        </div>
+        {% endif %}
+      </dl>
+    </div>
+
+    <div class="panel">
+      <h2 class="text-h4">Items</h2>
+      <ul class="mt-5 space-y-4">
+        {% for item in order.items %}
+        <li class="flex items-center gap-4">
+          <span class="relative shrink-0">
+            <span class="media media-cover block size-14 bg-white">
+              {% if item.image %}<img src="{{ img_url(item.image, 112, 112) }}" alt="" decoding="async">{% endif %}
+            </span>
+            <span class="count-bubble -top-1.5 -right-1.5" aria-hidden="true">{{ item.quantity }}</span>
+          </span>
+          <span class="min-w-0 flex-1 text-sm">
+            <a href="{{ url_for('main.product', slug=item.product_slug) }}" class="block truncate font-bold text-ink hover:underline">{{ item.product_name }}</a>
+            <span class="block text-muted">{% if item.options %}{{ item.options }} · {% endif %}Qty {{ item.quantity }}</span>
+          </span>
+          <span class="text-sm font-bold text-ink">{{ item.total|money }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      <dl class="mt-6 space-y-3 border-t pt-5 text-sm" style="border-color: var(--color-line-strong)">
+        <div class="flex justify-between gap-4"><dt class="text-muted">Subtotal</dt><dd class="font-semibold text-ink">{{ order.subtotal|money }}</dd></div>
+        {% if order.savings %}
+        <div class="flex justify-between gap-4"><dt class="text-muted">You saved</dt><dd class="font-semibold text-sale">−{{ order.savings|money }}</dd></div>
+        {% endif %}
+        <div class="flex justify-between gap-4"><dt class="text-muted">{{ "Pickup" if pickup else "Delivery" }}</dt><dd class="font-semibold text-ink">{{ order.shipping|money if order.shipping else "Free" }}</dd></div>
+        <div class="flex items-baseline justify-between gap-4 border-t pt-4" style="border-color: var(--color-line-strong)">
+          <dt class="font-bold text-ink">Total</dt><dd class="text-h4 text-ink">{{ order.total|money }}</dd>
+        </div>
+      </dl>
+    </div>
+  </div>
+
+  <div class="mt-10 flex justify-center">
+    <a href="{{ url_for('main.index') }}" class="btn btn-primary btn-lg">Continue shopping</a>
+  </div>
+</section>
+{% endblock %}

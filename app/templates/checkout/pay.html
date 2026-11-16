@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% from "components/forms.html" import csrf_field with context %}
+
+{% block title %}Pay with KHQR · Keyora{% endblock %}
+
+{% block content %}
+<section class="container-page section-tight">
+  <div class="mx-auto max-w-narrow">
+    <p class="eyebrow">Order {{ order.ref }}</p>
+    <h1 class="mt-3 text-h2">Scan to pay</h1>
+    <p class="lead mt-3">Scan the code with any banking app that supports KHQR (ABA, ACLEDA, Wing, Bakong…). When the payment has gone through, press <strong class="text-ink">I've paid</strong>.</p>
+
+    <div class="mt-10 grid items-start gap-8 md:grid-cols-[minmax(0,22rem)_1fr] md:gap-12">
+      {# Official KHQR card rendered by bakong-khqr from the order's stored string. #}
+      <img src="{{ qr_image }}" alt="KHQR code: pay {{ order.total|money }} to order {{ order.ref }}"
+           class="mx-auto h-auto w-full max-w-[22rem] rounded-card {{ 'opacity-40' if order.is_expired }}">
+
+      <div class="flex flex-col gap-6">
+        <div class="panel" data-pay data-expires="{{ (order.expires_at.timestamp() * 1000)|int }}">
+          <p class="text-h3 text-ink">{{ order.total|money }} <span class="text-sm font-semibold text-muted">{{ order.currency }}</span></p>
+          <p class="meta mt-2" data-countdown>
+            {% if order.is_expired %}This code has expired. If you already paid, press I've paid.
+            {% else %}Pay by {{ order.expires_at.astimezone().strftime("%H:%M") }}. After that the code stops working and the items go back on sale.{% endif %}
+          </p>
+
+          <form method="post" action="{{ url_for('checkout.check', ref=order.ref) }}" class="mt-5">
+            {{ csrf_field() }}
+            <button type="submit" class="btn btn-primary btn-block">I've paid</button>
+          </form>
+          <p class="meta mt-3 text-center">On your phone? Take a screenshot and pick it from your banking app's “Scan QR”.</p>
+        </div>
+
+        <div class="card">
+          <h2 class="text-h4">Summary</h2>
+          <ul class="mt-4 space-y-2 text-sm">
+            {% for item in order.items %}
+            <li class="flex justify-between gap-4"><span class="min-w-0 truncate text-body">{{ item.quantity }} × {{ item.product_name }}{% if item.options %} <span class="text-muted">· {{ item.options }}</span>{% endif %}</span><span class="font-semibold text-ink">{{ item.total|money }}</span></li>
+            {% endfor %}
+            <li class="flex justify-between gap-4"><span class="text-muted">{{ "Pickup" if order.delivery == "pickup" else "Delivery" }}</span><span class="font-semibold text-ink">{{ order.shipping|money if order.shipping else "Free" }}</span></li>
+          </ul>
+          <div class="mt-4 flex items-baseline justify-between gap-4 border-t pt-4">
+            <span class="font-bold text-ink">Total</span><span class="text-h4 text-ink">{{ order.total|money }}</span>
+          </div>
+        </div>
+
+        <form method="post" action="{{ url_for('checkout.cancel', ref=order.ref) }}" class="text-center">
+          {{ csrf_field() }}
+          <button type="submit" class="link text-sm" onclick="return confirm('Cancel this order? Don\'t cancel if you\'ve already paid.')">Cancel order</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Countdown only: this page never asks the server or Bakong about the payment by itself.
+  (() => {
+    const box = document.querySelector("[data-pay]");
+    if (!box) return;
+    const expires = Number(box.dataset.expires);
+    const countdown = box.querySelector("[data-countdown]");
+    const image = document.querySelector('img[alt^="KHQR code"]');
+
+    const tick = () => {
+      const left = Math.max(0, Math.round((expires - Date.now()) / 1000));
+      const m = Math.floor(left / 60), s = String(left % 60).padStart(2, "0");
+      if (left) {
+        countdown.textContent = `Code expires in ${m}:${s}. After that it stops working and the items go back on sale.`;
+        setTimeout(tick, 1000);
+      } else {
+        countdown.textContent = "This code has expired. If you already paid, press I've paid.";
+        image?.classList.add("opacity-40");
+      }
+    };
+    tick();
+  })();
+</script>
+{% endblock %}

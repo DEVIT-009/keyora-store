@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{# Admin shell: section nav on the left (chip row on small screens), page content right.
+   Pages set `nav` (from the route) to mark the current section. #}
+
+{% from "components/forms.html" import csrf_field with context %}
+
+{# Admin bar instead of the storefront header: no announcement, category nav, search or cart. #}
+{% block header %}
+<header class="admin-header">
+  <div class="site-header-inner container-page gap-3 sm:gap-6">
+    <a href="{{ url_for('admin.dashboard') }}" class="flex items-center gap-2.5 text-xl font-extrabold tracking-tight text-white">
+      <img src="{{ url_for('static', filename='img/keyora.svg') }}" alt="" width="40" height="32" class="h-8 w-auto invert">Keyora <span class="rounded-full bg-white/15 px-2.5 py-1 text-xs font-bold tracking-wide uppercase">Admin</span>
+    </a>
+    <div class="ml-auto flex items-center gap-2 sm:gap-4">
+      <a href="{{ url_for('main.index') }}" class="btn btn-sm border-transparent text-white hover:bg-white/10" target="_blank" rel="noopener">
+        View store<span class="sr-only"> (opens in a new tab)</span>
+        <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
+      </a>
+      <span class="hidden h-6 border-l border-white/20 md:block" aria-hidden="true"></span>
+      <span class="hidden text-right text-sm leading-tight md:block">
+        <span class="block font-semibold">{{ current_user.name or current_user.email }}</span>
+        <span class="block text-white/60">{{ current_user.email }}</span>
+      </span>
+      <form method="post" action="{{ url_for('account.logout') }}">
+        {{ csrf_field() }}
+        <button class="btn btn-sm border-white/30 text-white hover:border-white hover:bg-white/10">Sign out</button>
+      </form>
+    </div>
+  </div>
+</header>
+{% endblock %}
+
+{% block footer %}{% endblock %}
+
+{% block content %}
+<div class="container-page section-tight grid gap-6 lg:grid-cols-12 lg:gap-10">
+  <nav class="min-w-0 lg:col-span-2" aria-label="Admin sections">
+    <p class="eyebrow mb-3 hidden lg:block">Admin</p>
+    <ul class="subnav lg:sticky lg:top-[calc(var(--header-h)+2rem)]">
+      {% for key, label, endpoint in [
+        ("dashboard", "Dashboard", "admin.dashboard"),
+        ("orders", "Orders", "admin.order_list"),
+        ("products", "Products", "admin.product_list"),
+        ("categories", "Categories", "admin.category_list"),
+        ("customers", "Customers", "admin.customer_list"),
+        ("activity", "Activity", "admin.activity"),
+      ] %}
+      <li><a href="{{ url_for(endpoint) }}"{% if nav == key %} aria-current="page"{% endif %}>{{ label }}</a></li>
+      {% endfor %}
+    </ul>
+  </nav>
+  <div class="flex min-w-0 flex-col gap-8 lg:col-span-10">
+    {% block admin %}{% endblock %}
+  </div>
+</div>
+{% endblock %}

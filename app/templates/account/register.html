@@ -1,0 +1,27 @@
+{% extends "account/_auth_layout.html" %}
+{% block title %}Create account · Keyora{% endblock %}
+{% block heading %}Create an account{% endblock %}
+{% block intro %}Save your addresses and keep track of your orders.{% endblock %}
+{% block form %}
+<form method="post" action="{{ url_for('account.register') }}" novalidate class="flex flex-col gap-5">
+  {{ csrf_field() }}
+  <input type="hidden" name="next" value="{{ next }}">
+  {% if form_error %}
+  <p class="rounded-card bg-danger-soft px-4 py-3 text-sm font-semibold text-danger" role="alert">{{ form_error }}</p>
+  {% endif %}
+  {{ error_summary(errors) }}
+  {% call(attrs) field("full_name", "Full name") %}
+  <input {{ attrs }} type="text" class="input" autocomplete="name" required maxlength="80" autofocus value="{{ data.full_name }}">
+  {% endcall %}
+  {% call(attrs) field("email", "Email") %}
+  <input {{ attrs }} type="email" class="input" autocomplete="email" inputmode="email" required value="{{ data.email }}">
+  {% endcall %}
+  {% call(attrs) field("password", "Password", hint="At least 8 characters.") %}
+  <input {{ attrs }} type="password" class="input" autocomplete="new-password" required minlength="8" maxlength="128">
+  {% endcall %}
+  <button class="btn btn-primary btn-lg btn-block mt-2">Create account</button>
+</form>
+<p class="mt-8 border-t pt-6 text-center text-sm text-muted">
+  Already have an account? <a href="{{ url_for('account.login', next=next or None) }}" class="link">Sign in</a>
+</p>
+{% endblock %}

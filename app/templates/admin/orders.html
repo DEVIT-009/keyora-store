@@ -1,0 +1,64 @@
+{% extends "admin/_layout.html" %}
+{% from "admin/_macros.html" import order_status, fulfillment_status, when, pager, filter_chip, search_form with context %}
+
+{% block title %}Orders · Keyora admin{% endblock %}
+
+{% block admin %}
+<div class="flex flex-wrap items-end justify-between gap-4">
+  <div>
+    <p class="eyebrow">Admin</p>
+    <h1 class="mt-2 text-h2">Orders</h1>
+  </div>
+  {{ search_form(q, "Ref, email, name or phone", keep=("status", "fulfillment", "flagged")) }}
+</div>
+
+<div class="flex flex-col gap-3">
+  <div class="scroller flex gap-2" aria-label="Payment status">
+    {{ filter_chip("All payments", {"status": None}, not status) }}
+    {% for s in statuses %}{{ filter_chip(STATUS_LABELS[s], {"status": s}, status == s) }}{% endfor %}
+    {{ filter_chip("Needs review", {"flagged": None if flagged else "1"}, flagged) }}
+  </div>
+  <div class="scroller flex gap-2" aria-label="Fulfillment">
+    {{ filter_chip("Any fulfillment", {"fulfillment": None}, not fulfillment) }}
+    {% for f in fulfillments %}{{ filter_chip(FULFILLMENT_LABELS[f], {"fulfillment": f}, fulfillment == f) }}{% endfor %}
+  </div>
+</div>
+
+{% if page.items %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th scope="col">Order</th><th scope="col">Placed</th><th scope="col">Customer</th>
+        <th scope="col">Payment</th><th scope="col">Fulfillment</th><th scope="col" class="text-right">Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for o in page.items %}
+      <tr>
+        <td>
+          <a href="{{ url_for('admin.order_detail', ref=o.ref) }}" class="link whitespace-nowrap">{{ o.ref }}</a>
+          <span class="block text-muted">{{ o.items|sum(attribute="quantity") }} item{{ "" if o.items|sum(attribute="quantity") == 1 else "s" }} · {{ "Pickup" if o.delivery == "pickup" else "Delivery" }}</span>
+        </td>
+        <td class="whitespace-nowrap text-muted">{{ when(o.created_at) }}</td>
+        <td class="max-w-56">
+          <span class="block truncate font-semibold text-ink">{{ o.receiver_name }}</span>
+          <span class="block truncate text-muted">{{ o.email }}</span>
+        </td>
+        <td><span class="flex flex-wrap gap-1">{{ order_status(o) }}</span></td>
+        <td>{% if o.status in ("paid", "paid_late") or o.fulfillment != "unfulfilled" %}{{ fulfillment_status(o) }}{% else %}<span class="text-subtle">—</span>{% endif %}</td>
+        <td class="text-right font-semibold whitespace-nowrap text-ink">{{ o.total|money }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{{ pager(page, "orders") }}
+{% else %}
+<div class="panel text-center">
+  <p class="font-bold text-ink">No orders match</p>
+  <p class="meta mt-1">Try another filter or clear the search.</p>
+  <a href="{{ url_for('admin.order_list') }}" class="btn btn-secondary btn-sm mt-4">Show all orders</a>
+</div>
+{% endif %}
+{% endblock %}

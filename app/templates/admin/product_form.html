@@ -1,0 +1,246 @@
+{% extends "admin/_layout.html" %}
+{% from "components/forms.html" import field, error_summary, csrf_field with context %}
+
+{# After a failed POST, show what was typed; otherwise the product's values. #}
+{% set posted = request.method == "POST" %}
+{% macro val(name) -%}{{ request.form.get(name, "") if posted else (data.get(name) if data.get(name) is not none else "") }}{%- endmacro %}
+{% macro checked(name) -%}{{ "checked" if (request.form.get(name) == "on" if posted else data.get(name)) }}{%- endmacro %}
+{% macro opt(value) -%}{{ value if value is not none }}{%- endmacro %}
+
+{% block title %}{{ product.name if product else "New product" }} · Keyora admin{% endblock %}
+
+{% macro variant_row(i, v) -%}
+{% set p = "variants-%s-"|format(i) %}
+<tr data-variant-row>
+  <td>
+    <input type="hidden" name="{{ p }}id" value="{{ opt(v.id) }}">
+    <input type="hidden" name="{{ p }}stock_orig" value="{{ opt(v.stock_orig) }}">
+    <label class="sr-only" for="{{ p }}sku">SKU</label>
+    <input id="{{ p }}sku" name="{{ p }}sku" class="input h-10 w-36 uppercase" value="{{ opt(v.sku) }}" maxlength="64"{% if errors.get(p ~ 'sku') %} aria-invalid="true"{% endif %}>
+    {% if errors.get(p ~ "sku") %}<p class="field-error">{{ errors[p ~ "sku"] }}</p>{% endif %}
+  </td>
+  <td>
+    <span class="flex items-center gap-2">
+      <label class="sr-only" for="{{ p }}color_hex">Swatch</label>
+      <input id="{{ p }}color_hex" name="{{ p }}color_hex" type="color" class="size-10 shrink-0 cursor-pointer rounded-full border bg-white p-1" value="{{ v.color_hex or '#2b2c2e' }}">
+      <label class="sr-only" for="{{ p }}color_name">Color name</label>
+      <input id="{{ p }}color_name" name="{{ p }}color_name" class="input h-10 w-32" value="{{ opt(v.color_name) }}" placeholder="—" maxlength="40"{% if errors.get(p ~ 'color_name') %} aria-invalid="true"{% endif %}>
+    </span>
+    {% if errors.get(p ~ "color_name") %}<p class="field-error">{{ errors[p ~ "color_name"] }}</p>{% endif %}
+    {% if errors.get(p ~ "color_hex") %}<p class="field-error">{{ errors[p ~ "color_hex"] }}</p>{% endif %}
+  </td>
+  <td>
+    <label class="sr-only" for="{{ p }}switch_type">Switch</label>
+    <input id="{{ p }}switch_type" name="{{ p }}switch_type" class="input h-10 w-32" value="{{ opt(v.switch_type) }}" placeholder="—" maxlength="40">
+  </td>
+  <td>
+    <label class="sr-only" for="{{ p }}price">Price override</label>
+    <input id="{{ p }}price" name="{{ p }}price" inputmode="decimal" class="input h-10 w-24" value="{{ opt(v.price) }}" placeholder="Default"{% if errors.get(p ~ 'price') %} aria-invalid="true"{% endif %}>
+    {% if errors.get(p ~ "price") %}<p class="field-error">{{ errors[p ~ "price"] }}</p>{% endif %}
+  </td>
+  <td>
+    <label class="sr-only" for="{{ p }}compare_at">Compare-at override</label>
+    <input id="{{ p }}compare_at" name="{{ p }}compare_at" inputmode="decimal" class="input h-10 w-24" value="{{ opt(v.compare_at) }}" placeholder="Default"{% if errors.get(p ~ 'compare_at') %} aria-invalid="true"{% endif %}>
+    {% if errors.get(p ~ "compare_at") %}<p class="field-error">{{ errors[p ~ "compare_at"] }}</p>{% endif %}
+  </td>
+  <td>
+    <label class="sr-only" for="{{ p }}stock">Stock</label>
+    <input id="{{ p }}stock" name="{{ p }}stock" type="number" min="0" step="1" class="input h-10 w-24" value="{{ opt(v.stock) }}"{% if errors.get(p ~ 'stock') %} aria-invalid="true"{% endif %}>
+    {% if errors.get(p ~ "stock") %}<p class="field-error">{{ errors[p ~ "stock"] }}</p>{% endif %}
+  </td>
+  <td class="text-center">
+    <label class="inline-flex items-center gap-1.5 text-xs font-semibold text-muted">
+      <input type="checkbox" name="{{ p }}remove" class="size-4 accent-[var(--color-danger)]"{% if v.remove %} checked{% endif %}> Remove
+    </label>
+  </td>
+</tr>
+{%- endmacro %}
+
+{% block admin %}
+<div class="flex flex-wrap items-end justify-between gap-4">
+  <div>
+    <a href="{{ url_for('admin.product_list') }}" class="link-muted text-sm">← Products</a>
+    <h1 class="mt-3 text-h2">{{ product.name if product else "New product" }}</h1>
+    {% if product %}
+    <p class="meta mt-2">
+      <span class="status {{ 'status-success' if product.is_published else 'status-neutral' }}">{{ "Live" if product.is_published else "Draft" }}</span>
+      {% if product.is_published %}· <a href="{{ url_for('main.product', slug=product.slug) }}" class="link-muted underline underline-offset-4" target="_blank" rel="noopener">View in store</a>{% endif %}
+    </p>
+    {% endif %}
+  </div>
+</div>
+
+<form method="post" enctype="multipart/form-data" novalidate class="flex flex-col gap-6" id="product-form">
+  {{ csrf_field() }}
+  {{ error_summary(errors) }}
+
+  <section class="card flex flex-col gap-5" aria-labelledby="basics-heading">
+    <h2 id="basics-heading" class="text-h4">Basics</h2>
+    <div class="grid gap-5 md:grid-cols-2">
+      {% call(attrs) field("name", "Name") %}<input {{ attrs }} class="input" maxlength="120" value="{{ val('name') }}" required>{% endcall %}
+      {% call(attrs) field("slug", "URL slug", hint="Used in /products/<slug>. Leave blank to build it from the name.", optional=True) %}<input {{ attrs }} class="input" maxlength="120" value="{{ val('slug') }}" pattern="[a-z0-9-]+">{% endcall %}
+      {% call(attrs) field("category_id", "Category") %}
+      <select {{ attrs }} class="input">
+        <option value="">Choose…</option>
+        {% set current = (request.form.get("category_id")|int(0)) if posted else data.get("category_id") %}
+        {% for c in categories %}<option value="{{ c.id }}"{% if c.id == current %} selected{% endif %}>{{ c.name }}</option>{% endfor %}
+      </select>
+      {% endcall %}
+      {% call(attrs) field("layout", "Layout", hint="Keyboards only. Drives the layout filter in the store.", optional=True) %}
+      <select {{ attrs }} class="input">
+        <option value="">No layout (not a keyboard)</option>
+        {% set current = val('layout') %}
+        {% for value, label in layouts.items() %}<option value="{{ value }}"{% if value == current %} selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+      {% endcall %}
+    </div>
+    {% call(attrs) field("spec", "Card tagline", hint="One line under the name on product cards, e.g. 75% · Gasket mount · Tri-mode", optional=True) %}<input {{ attrs }} class="input" maxlength="200" value="{{ val('spec') }}">{% endcall %}
+    {% call(attrs) field("summary", "Summary", optional=True) %}<textarea {{ attrs }} rows="3" class="input h-auto py-3">{{ val('summary') }}</textarea>{% endcall %}
+  </section>
+
+  <section class="card flex flex-col gap-5" aria-labelledby="pricing-heading">
+    <h2 id="pricing-heading" class="text-h4">Pricing &amp; merchandising</h2>
+    <div class="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+      {% call(attrs) field("price", "Price (USD)") %}<input {{ attrs }} class="input" inputmode="decimal" value="{{ val('price') }}" placeholder="169">{% endcall %}
+      {% call(attrs) field("compare_at", "Compare-at price", hint="Shows as a sale when higher than the price.", optional=True) %}<input {{ attrs }} class="input" inputmode="decimal" value="{{ val('compare_at') }}">{% endcall %}
+      {% call(attrs) field("rating", "Rating", hint="0–5, display only.", optional=True) %}<input {{ attrs }} class="input" inputmode="decimal" value="{{ val('rating') }}">{% endcall %}
+      {% call(attrs) field("review_count", "Review count", optional=True) %}<input {{ attrs }} type="number" min="0" class="input" value="{{ val('review_count') }}">{% endcall %}
+    </div>
+    <div class="flex flex-wrap gap-x-8 gap-y-3 text-sm font-semibold text-ink">
+      <label class="inline-flex items-center gap-2"><input type="checkbox" name="is_new" class="size-4 accent-[var(--color-ink)]" {{ checked('is_new') }}> Mark as new</label>
+      <label class="inline-flex items-center gap-2"><input type="checkbox" name="is_preorder" class="size-4 accent-[var(--color-ink)]" {{ checked('is_preorder') }}> Pre-order (stock isn't reserved at checkout)</label>
+    </div>
+    {% call(attrs) field("preorder_ships", "Pre-orders ship", hint="Shown as “Pre-order · ships …”, e.g. mid-January.", optional=True) %}<input {{ attrs }} class="input max-w-sm" maxlength="80" value="{{ val('preorder_ships') }}">{% endcall %}
+  </section>
+
+  <section class="card flex flex-col gap-5" id="variants" aria-labelledby="variants-heading">
+    <div>
+      <h2 id="variants-heading" class="text-h4">Variants</h2>
+      <p class="meta mt-1">One row per color × switch combination. Leave color or switch blank if the product has no such option. Blank price fields use the product price.</p>
+    </div>
+    {% if errors.get("variants") %}<p id="variants-error" class="rounded-card bg-danger-soft px-4 py-3 text-sm text-danger" role="alert">{{ errors["variants"] }}</p>{% endif %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th scope="col">SKU</th><th scope="col">Color</th><th scope="col">Switch</th><th scope="col">Price</th><th scope="col">Compare-at</th><th scope="col">Stock</th><th scope="col"><span class="sr-only">Remove</span></th></tr></thead>
+        <tbody data-variant-rows>
+          {% for v in variants %}{{ variant_row(loop.index0, v) }}{% endfor %}
+          {{ variant_row(variants|length, {}) }}
+        </tbody>
+      </table>
+    </div>
+    <template data-variant-template>{{ variant_row("__i__", {}) }}</template>
+    <div class="flex flex-wrap items-center gap-3">
+      <button type="button" class="btn btn-secondary btn-sm hidden" data-add-variant>Add variant</button>
+      <p class="meta">Stock changes are applied as “+/− the difference”, so orders placed while you edit aren't lost.</p>
+    </div>
+  </section>
+
+  <section class="card flex flex-col gap-5" aria-labelledby="media-heading">
+    <h2 id="media-heading" class="text-h4">Photos &amp; details</h2>
+    {# data.gallery_raw is the posted text after a failed save, plus any photos that did upload. #}
+    {% call(attrs) field("gallery", "Gallery", hint="One photo per line: uploads (cld:…) or an Unsplash photo id / images.unsplash.com URL. The first is the main photo; delete a line to remove it.") %}
+    <textarea {{ attrs }} rows="4" class="input h-auto py-3 font-mono text-sm" data-gallery-input data-cloud="{{ config.CLOUDINARY_CLOUD_NAME }}">{{ data.get("gallery_raw", "") }}</textarea>
+    {% endcall %}
+    <ul class="flex flex-wrap gap-2" data-gallery-preview aria-label="Gallery preview">
+      {% for id in (data.get("gallery") or []) %}<li class="media media-cover size-20"><img src="{{ img_url(id, 160, 160) }}" alt="" loading="lazy"></li>{% endfor %}
+    </ul>
+    {% if uploads %}
+    {% call(attrs) field("photos", "Upload photos", hint="JPG, PNG or WebP, up to 10 MB each and %d at a time. They're converted to WebP, uploaded to Cloudinary when you save, and added to the end of the gallery."|format(max_files), optional=True) %}
+    <input {{ attrs }} type="file" multiple accept="{{ accept }}" class="input h-auto py-2.5 text-sm file:mr-3 file:rounded-full file:border-0 file:bg-surface file:px-4 file:py-1.5 file:font-semibold file:text-ink" data-photo-input>
+    {% endcall %}
+    {% if data.get("photos_note") %}<p class="notice notice-info" role="status">{{ data.photos_note }}</p>{% endif %}
+    <ul class="flex flex-wrap gap-2" data-photo-preview aria-label="Photos to upload"></ul>
+    {% else %}
+    <p class="meta">To upload photos, add <code class="font-mono">CLOUDINARY_CLOUD_NAME</code>, <code class="font-mono">CLOUDINARY_API_KEY</code> and <code class="font-mono">CLOUDINARY_API_SECRET</code> to <code class="font-mono">.env</code> and restart.</p>
+    {% endif %}
+    {% set highlights_text = request.form.get("highlights", "") if posted else (data.get("highlights") or [])|join("\n") %}
+    {% call(attrs) field("highlights", "Highlights", hint="One per line; shown as bullet points on the product page.", optional=True) %}
+    <textarea {{ attrs }} rows="4" class="input h-auto py-3">{{ highlights_text }}</textarea>
+    {% endcall %}
+    <div>
+      <p class="label">Specs</p>
+      <div class="flex flex-col gap-2" data-spec-rows>
+        {% for key, value in (data.get("spec_rows") or []) + [("", ""), ("", "")] %}
+        <div class="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-2">
+          <input name="spec_key" class="input h-10" value="{{ key }}" placeholder="e.g. Mount" aria-label="Spec name">
+          <input name="spec_value" class="input h-10" value="{{ value }}" placeholder="e.g. Gasket" aria-label="Spec value">
+        </div>
+        {% endfor %}
+      </div>
+      <p class="meta mt-1.5">Leave a name blank to drop that row. Save to get more empty rows.</p>
+    </div>
+  </section>
+
+  <div class="sticky bottom-0 z-10 -mx-[var(--gutter)] flex flex-wrap items-center gap-4 border-t bg-white/95 px-[var(--gutter)] py-4 backdrop-blur md:mx-0 md:rounded-card md:border md:px-5">
+    <label class="inline-flex items-center gap-2 text-sm font-semibold text-ink"><input type="checkbox" name="is_published" class="size-4 accent-[var(--color-ink)]" {{ checked('is_published') }}> Published in the store</label>
+    <button class="btn btn-primary ml-auto">{{ "Save product" if product else "Create product" }}</button>
+  </div>
+</form>
+
+{% if product %}
+<section class="card border-danger/30" id="delete" aria-labelledby="delete-heading">
+  <h2 id="delete-heading" class="text-h4">Delete product</h2>
+  <p class="meta mt-1 max-w-2xl">Deleting removes it and its variants for good, and drops it from customers' carts. Past orders keep their item details. To take it off sale but keep it, untick “Published” instead.</p>
+  <form method="post" action="{{ url_for('admin.product_delete', product_id=product.id) }}" class="mt-4 flex flex-wrap items-end gap-3">
+    {{ csrf_field() }}
+    <div>
+      <label for="confirm" class="label">Type <code class="font-mono">{{ product.slug }}</code> to confirm</label>
+      <input id="confirm" name="confirm" class="input h-10 w-72" autocomplete="off">
+    </div>
+    <button class="btn btn-secondary btn-sm h-10 text-danger">Delete product</button>
+  </form>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  // Add variant rows from the <template>; without JS the server always renders one blank row.
+  const rows = document.querySelector("[data-variant-rows]");
+  const template = document.querySelector("[data-variant-template]");
+  const add = document.querySelector("[data-add-variant]");
+  let next = rows.querySelectorAll("[data-variant-row]").length;
+  add.classList.remove("hidden");
+  add.addEventListener("click", () => {
+    rows.insertAdjacentHTML("beforeend", template.innerHTML.replaceAll("__i__", next++));
+    rows.lastElementChild.querySelector("input:not([type=hidden])").focus();
+  });
+
+  // Live gallery thumbnails (same id rules as app/admin/forms.py photo_id, URLs as app/images.py).
+  const input = document.querySelector("[data-gallery-input]");
+  const preview = document.querySelector("[data-gallery-preview]");
+  const thumbUrl = (line) => {
+    line = line.trim();
+    if (line.startsWith("cld:")) {
+      const id = line.slice(4);
+      return /^[A-Za-z0-9_-]+(\/[A-Za-z0-9_-]+)*$/.test(id) && input.dataset.cloud
+        ? `https://res.cloudinary.com/${input.dataset.cloud}/image/upload/c_fill,g_auto,w_160,h_160,q_auto/${id}.webp` : null;
+    }
+    const url = line.match(/images\.unsplash\.com\/photo-([0-9]+-[0-9a-f]+)/);
+    const id = url ? url[1] : line.replace(/^photo-/, "");
+    return /^\d{10,}-[0-9a-f]{6,}$/.test(id) ? `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&q=70&w=160&h=160` : null;
+  };
+  const thumbs = (urls) => urls.map((src) => {
+    const li = document.createElement("li");
+    li.className = "media media-cover size-20";
+    const img = document.createElement("img");
+    img.src = src;
+    img.alt = "";
+    li.append(img);
+    return li;
+  });
+  input.addEventListener("input", () => {
+    preview.replaceChildren(...thumbs(input.value.split("\n").map(thumbUrl).filter(Boolean)));
+  });
+
+  // Local previews of the files chosen for upload (nothing leaves the browser until Save).
+  const photos = document.querySelector("[data-photo-input]");
+  const photoPreview = document.querySelector("[data-photo-preview]");
+  photos?.addEventListener("change", () => {
+    photoPreview.querySelectorAll("img").forEach((img) => URL.revokeObjectURL(img.src));
+    photoPreview.replaceChildren(...thumbs([...photos.files].map((file) => URL.createObjectURL(file))));
+  });
+})();
+</script>
+{% endblock %}

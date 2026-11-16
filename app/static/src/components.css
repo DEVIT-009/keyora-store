@@ -1,0 +1,385 @@
+/*
+ * Reusable primitives. These sit in the components layer, so any Tailwind
+ * utility placed on the same element overrides them (e.g. class="btn btn-primary w-full").
+ */
+@layer components {
+  /* ---------- Layout ---------- */
+  .container-page {
+    width: 100%;
+    max-width: calc(var(--container-page) + var(--gutter) * 2);
+    margin-inline: auto;
+    padding-inline: var(--gutter);
+  }
+
+  .container-narrow {
+    width: 100%;
+    margin-inline: auto;
+    padding-inline: var(--gutter);
+    max-width: calc(var(--container-narrow) + var(--gutter) * 2);
+  }
+
+  .section { padding-block: var(--section-space); }
+  .section-tight { padding-block: calc(var(--section-space) / 2); }
+  .section-surface { background-color: var(--color-surface); }
+
+  /* Heading row above a grid: title left, "view all" link right. */
+  .section-head {
+    @apply mb-8 flex flex-wrap items-end justify-between gap-x-6 gap-y-3 md:mb-10;
+  }
+
+  /* Product listing grid: 2 -> 3 -> 4 columns, more vertical than horizontal gap. */
+  .grid-products {
+    @apply grid grid-cols-2 gap-x-3 gap-y-8 md:grid-cols-3 md:gap-x-5 md:gap-y-10 xl:grid-cols-4 xl:gap-x-6;
+  }
+
+  /* Intrinsic grid: as many columns as fit, each at least --grid-min wide. */
+  .grid-auto {
+    display: grid;
+    gap: 1.5rem;
+    grid-template-columns: repeat(auto-fill, minmax(min(var(--grid-min, 16rem), 100%), 1fr));
+  }
+
+  /* Horizontal snap row (category tiles, carousels). Bleeds to the screen edge on mobile. */
+  .scroller {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: var(--scroller-item, 72%);
+    gap: 0.75rem;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: var(--gutter);
+    margin-inline: calc(var(--gutter) * -1);
+    padding-inline: var(--gutter);
+    scrollbar-width: none;
+  }
+  .scroller::-webkit-scrollbar { display: none; }
+  .scroller > * { scroll-snap-align: start; }
+
+  @media (width >= 48rem) {
+    .scroller { --scroller-item: 40%; gap: 1.25rem; }
+  }
+  @media (width >= 80rem) {
+    .scroller { --scroller-item: calc((100% - 3 * 1.25rem) / 4); }
+  }
+
+  /* ---------- Type helpers ---------- */
+  .eyebrow { @apply text-eyebrow uppercase text-muted; }
+  .lead { @apply text-lead text-muted; }
+  .display { @apply text-display text-ink; }
+  .meta { @apply text-sm text-muted; }
+
+  /* ---------- Links ---------- */
+  .link {
+    @apply font-semibold text-ink underline decoration-1 underline-offset-4 transition-[text-decoration-color];
+    text-decoration-color: var(--color-line-strong);
+  }
+  .link:hover { text-decoration-color: currentColor; }
+
+  .link-muted { @apply text-muted transition-colors hover:text-ink; }
+
+  /* Bold call-to-action link with an arrow that nudges on hover. */
+  .link-arrow {
+    @apply inline-flex items-center gap-1.5 text-sm font-bold text-ink;
+  }
+  .link-arrow::after {
+    content: "\2192";
+    transition: translate 200ms var(--ease-snappy);
+  }
+  .link-arrow:hover::after { translate: 0.25rem 0; }
+
+  .nav-link {
+    @apply relative inline-flex h-full items-center text-sm font-bold text-ink;
+  }
+  .nav-link::after {
+    content: "";
+    @apply absolute inset-x-0 bottom-0 h-0.5 origin-left scale-x-0 bg-ink transition-transform duration-200;
+  }
+  .nav-link:hover::after,
+  .nav-link[aria-current="page"]::after { @apply scale-x-100; }
+
+  /* ---------- Buttons ---------- */
+  .btn {
+    @apply inline-flex h-12 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-full border-2 px-6 text-sm font-bold transition-colors duration-200 select-none;
+  }
+  .btn:disabled,
+  .btn[aria-disabled="true"] { @apply pointer-events-none opacity-40; }
+  .btn svg { @apply size-4.5 shrink-0; }
+
+  .btn-primary { @apply border-ink bg-ink text-white hover:border-ink-hover hover:bg-ink-hover; }
+  .btn-secondary { @apply border-ink bg-white text-ink hover:bg-ink hover:text-white; }
+  .btn-accent { @apply border-accent bg-accent text-white hover:border-accent-hover hover:bg-accent-hover; }
+  .btn-ghost { @apply border-transparent bg-transparent text-ink hover:bg-surface; }
+  .btn-inverse { @apply border-white bg-white text-ink hover:bg-transparent hover:text-white; }
+
+  .btn-sm { @apply h-10 px-4 text-xs; }
+  .btn-lg { @apply h-14 px-8 text-base; }
+  .btn-block { @apply w-full; }
+  .btn-icon { @apply size-11 px-0; }
+  .btn-icon.btn-sm { @apply size-9; }
+
+  /* ---------- Forms ---------- */
+  .label { @apply mb-1.5 block text-sm font-semibold text-ink; }
+
+  .input {
+    @apply block h-12 w-full rounded-control border bg-white px-4 text-base text-ink transition-colors;
+    border-color: var(--color-line-strong);
+  }
+  .input:hover { border-color: var(--color-muted); }
+  .input:focus { @apply border-ink outline-none; }
+  .input[aria-invalid="true"] { @apply border-danger; }
+  textarea.input { @apply h-auto min-h-32 py-3; }
+
+  /* ---------- Surfaces ---------- */
+  .card { @apply rounded-card border bg-white p-5 md:p-6; }
+  .panel { @apply rounded-card bg-surface p-5 md:p-8; }
+  .divider { @apply border-t; }
+
+  /* Square image frame on a light surface; product shots sit inside with breathing room. */
+  .media {
+    @apply relative aspect-square overflow-hidden rounded-card bg-surface;
+  }
+  .media > img {
+    @apply size-full object-contain p-[8%] mix-blend-multiply transition-transform duration-500;
+    transition-timing-function: var(--ease-snappy);
+  }
+  .media-cover > img { @apply object-cover p-0 mix-blend-normal; }
+
+  /* ---------- Product card ---------- */
+  .product-card { @apply relative flex flex-col gap-3; }
+  .product-card:hover .media > img { @apply scale-[1.04]; }
+  .media-badges { @apply absolute top-3 left-3 z-10 flex flex-wrap gap-1.5; }
+  .product-title { @apply text-[0.9375rem] leading-snug font-bold text-ink md:text-base; }
+  .product-card .product-title a::after { content: ""; @apply absolute inset-0; } /* whole card is clickable */
+
+  .price { @apply flex flex-wrap items-baseline gap-x-2 text-[0.9375rem] font-bold text-ink; }
+  .price-compare { @apply text-sm font-medium text-muted line-through; }
+  .price-sale { @apply text-sale; }
+
+  /* ---------- Badges, chips, swatches ---------- */
+  .badge {
+    @apply inline-flex h-6 items-center rounded-full px-2.5 text-[0.6875rem] font-bold tracking-wide uppercase;
+  }
+  .badge-sale { @apply bg-sale text-white; }
+  .badge-new { @apply bg-new text-white; }
+  .badge-preorder { @apply bg-preorder text-white; }
+  .badge-soldout { @apply bg-ink text-white; }
+  .badge-neutral { @apply border bg-white text-ink; }
+
+  /* Filter/feature tags. Selected via aria-pressed, aria-selected or (filter links) aria-current. */
+  .chip {
+    @apply inline-flex h-9 items-center gap-1.5 rounded-full border bg-white px-4 text-xs font-semibold whitespace-nowrap text-ink transition-colors hover:border-ink;
+  }
+  .chip[aria-pressed="true"],
+  .chip[aria-selected="true"],
+  .chip[aria-current="page"] { @apply border-ink bg-ink text-white; }
+
+  /* Chip wrapping a visually hidden radio/checkbox (product options). */
+  .chip:has(:checked) {
+    @apply border-ink;
+    box-shadow: inset 0 0 0 1px var(--color-ink);
+  }
+  .chip:has(:focus-visible) {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+  /* Option combination that has no variant. */
+  .chip:has(:disabled) { @apply pointer-events-none border-dashed text-muted line-through; }
+
+  .swatch {
+    @apply inline-block size-7 rounded-full ring-1 ring-offset-2 transition-shadow;
+    --tw-ring-color: var(--color-line-strong);
+  }
+  .swatch[aria-checked="true"],
+  .swatch[aria-pressed="true"] { --tw-ring-color: var(--color-ink); @apply ring-2; }
+
+  /* ---------- Site chrome ---------- */
+  .site-header {
+    @apply sticky top-0 z-40 border-b bg-white/95 backdrop-blur;
+  }
+  .site-header-inner {
+    @apply flex items-center gap-6;
+    height: var(--header-h);
+  }
+
+  /* Admin pages: dark bar so staff always know they're not in the storefront. */
+  .admin-header { @apply sticky top-0 z-40 bg-ink text-white; }
+
+  .site-footer { @apply border-t bg-surface pt-14 pb-8 text-sm md:pt-20; }
+  .footer-heading { @apply mb-4 text-sm font-bold text-ink; }
+}
+
+/* ---------- Editorial imagery ---------- */
+@layer components {
+  /*
+   * Image with text laid over it. The first <img> (or <picture>) child fills the box,
+   * a bottom-up scrim keeps white text readable. Used by .hero and .tile.
+   */
+  .scrim {
+    @apply relative isolate overflow-hidden bg-ink text-white;
+  }
+  .scrim > img,
+  .scrim > picture > img {
+    @apply absolute inset-0 -z-20 size-full object-cover transition-transform duration-700;
+    transition-timing-function: var(--ease-snappy);
+  }
+  .scrim::after {
+    content: "";
+    @apply absolute inset-0 -z-10;
+    background: linear-gradient(to top, rgb(0 0 0 / 0.72), rgb(0 0 0 / 0.25) 45%, rgb(0 0 0 / 0) 75%);
+  }
+  .scrim :where(h1, h2, h3, h4) { @apply text-white; }
+  .scrim .eyebrow,
+  .scrim .lead,
+  .scrim .meta { @apply text-white/80; }
+
+  /* Full-bleed editorial hero; content anchored bottom-left. */
+  .hero {
+    @apply flex items-end;
+    min-height: clamp(34rem, 82svh, 52rem);
+  }
+
+  /* Heavier scrim for wide images with longer copy on the left. */
+  .scrim-strong::after {
+    background:
+      linear-gradient(to top, rgb(0 0 0 / 0.78), rgb(0 0 0 / 0) 70%),
+      linear-gradient(to right, rgb(0 0 0 / 0.55), rgb(0 0 0 / 0) 65%);
+  }
+
+  /* Clickable image tile (collections, layouts, banners). */
+  .tile {
+    @apply flex flex-col justify-end rounded-card p-5 md:p-7;
+  }
+  .tile:hover > img,
+  .tile:hover > picture > img { @apply scale-[1.04]; }
+
+  .rating { @apply inline-flex items-center gap-1 text-xs font-semibold text-ink; }
+  .rating svg { @apply size-3.5 fill-star; }
+  .rating span { @apply font-medium text-muted; }
+}
+
+@layer components {
+  .breadcrumb { @apply flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted; }
+  .breadcrumb li + li::before { content: "/"; @apply mr-2 text-line-strong; }
+  .breadcrumb a { @apply transition-colors hover:text-ink; }
+  .breadcrumb [aria-current="page"] { @apply font-semibold text-ink; }
+
+  /* Stock state: colored dot + label. */
+  .stock { @apply inline-flex items-center gap-2 text-sm font-semibold; }
+  .stock::before { content: ""; @apply size-2 shrink-0 rounded-full bg-current; }
+  .stock-in { @apply text-success; }
+  .stock-low { @apply text-warning; }
+  .stock-out { @apply text-muted; }
+  .stock-preorder { @apply text-preorder; }
+
+  /* Product gallery: swipeable row below lg, two-column grid at lg. */
+  .gallery {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 88%;
+    gap: 0.75rem;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: var(--gutter);
+    margin-inline: calc(var(--gutter) * -1);
+    padding-inline: var(--gutter);
+    scrollbar-width: none;
+  }
+  .gallery::-webkit-scrollbar { display: none; }
+  .gallery > * { scroll-snap-align: start; }
+
+  @media (width >= 48rem) {
+    .gallery { grid-auto-columns: 62%; }
+  }
+  @media (width >= 64rem) {
+    .gallery {
+      grid-auto-flow: row;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1rem;
+      overflow: visible;
+      margin-inline: 0;
+      padding-inline: 0;
+    }
+    /* Lead image goes full width only when that leaves an even number to pair up. */
+    .gallery > :first-child:nth-last-child(odd) { grid-column: span 2; }
+  }
+}
+
+@layer components {
+  /* − qty + control; each button submits its own quantity value. */
+  .qty-stepper {
+    @apply inline-flex h-11 items-center rounded-full border;
+    border-color: var(--color-line-strong);
+  }
+  .qty-stepper button {
+    @apply grid size-11 place-items-center rounded-full text-ink transition-colors hover:bg-surface disabled:pointer-events-none disabled:text-subtle;
+  }
+  .qty-stepper output { @apply min-w-6 text-center text-sm font-bold text-ink; }
+
+  /* Item count pinned to an icon button (header cart). */
+  .count-bubble {
+    @apply absolute top-1 right-0.5 grid h-4.5 min-w-4.5 place-items-center rounded-full bg-ink px-1 text-[0.625rem] leading-none font-bold text-white;
+  }
+}
+
+@layer components {
+  select.input {
+    @apply appearance-none pr-11;
+    background: var(--color-white) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23161716' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 1rem center / 1.125rem;
+  }
+  select.input:has(option[value=""]:checked) { color: var(--color-subtle); }
+  select.input option { color: var(--color-ink); }
+  .field-error { @apply mt-1.5 text-sm font-medium text-danger; }
+
+  /* Selectable card wrapping a native radio (delivery, payment). */
+  .option-card {
+    @apply flex cursor-pointer items-start gap-3 rounded-card border bg-white p-4 transition-colors hover:border-ink md:p-5;
+    border-color: var(--color-line-strong);
+  }
+  .option-card input[type="radio"] { @apply mt-0.5 size-4.5 shrink-0; accent-color: var(--color-ink); }
+  .option-card:has(:checked) {
+    @apply border-ink;
+    box-shadow: inset 0 0 0 1px var(--color-ink);
+  }
+  .option-card:has(:focus-visible) { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+
+  /* Numbered checkout step heading. */
+  .step-title { @apply flex items-center gap-3 text-h4; }
+  .step-title::before {
+    content: counter(step);
+    counter-increment: step;
+    @apply grid size-7 shrink-0 place-items-center rounded-full bg-ink text-xs font-bold text-white;
+  }
+  .steps { counter-reset: step; }
+}
+
+@layer components {
+  /* Flash messages under the header. */
+  .notice { @apply rounded-card px-4 py-3 text-sm font-semibold; }
+  .notice-success { @apply bg-success-soft text-success; }
+  .notice-info { @apply bg-info-soft text-info; }
+
+  /* In-page section nav: chip row on mobile, vertical list from lg. */
+  .subnav { @apply -mx-[var(--gutter)] flex gap-2 overflow-x-auto px-[var(--gutter)] lg:mx-0 lg:flex-col lg:gap-1 lg:overflow-visible lg:px-0; scrollbar-width: none; }
+  .subnav a {
+    @apply inline-flex h-10 shrink-0 items-center rounded-full border bg-white px-4 text-sm font-semibold text-ink whitespace-nowrap transition-colors hover:border-ink;
+    @apply lg:h-11 lg:w-full lg:rounded-control lg:border-transparent lg:px-4 lg:hover:border-transparent lg:hover:bg-surface;
+  }
+  .subnav a[aria-current="page"] { @apply border-ink bg-ink text-white lg:border-transparent lg:bg-surface lg:text-ink; }
+
+  /* ---------- Admin ---------- */
+  /* Wide tables scroll sideways inside the gutter on small screens instead of the page. */
+  .table-wrap { @apply -mx-[var(--gutter)] overflow-x-auto px-[var(--gutter)] md:mx-0 md:px-0; }
+  .data-table { @apply w-full border-collapse text-left text-sm; }
+  .data-table th { @apply border-b px-3 py-2.5 text-xs font-semibold tracking-wide whitespace-nowrap text-muted uppercase first:pl-0; }
+  .data-table td { @apply border-b px-3 py-3 align-middle text-body first:pl-0; }
+  .data-table tbody tr:last-child td { @apply border-b-0; }
+
+  /* Order / product state pill (tone = success | warning | danger | info | neutral). */
+  .status { @apply inline-flex h-6 items-center rounded-full px-2.5 text-xs font-semibold whitespace-nowrap; }
+  .status-success { @apply bg-success-soft text-success; }
+  .status-warning { @apply bg-warning-soft text-warning; }
+  .status-danger { @apply bg-danger-soft text-danger; }
+  .status-info { @apply bg-info-soft text-info; }
+  .status-neutral { @apply bg-surface text-muted; }
+}
