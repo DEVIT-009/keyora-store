@@ -4,10 +4,6 @@
     "app": {
       "root": ".",
       "framework": "flask"
-    },
-    "auth-server": {
-      "root": "auth-server",
-      "runtime": "node"
     }
   },
   "rewrites": [

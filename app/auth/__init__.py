@@ -1,130 +1,56 @@
-"""Better Auth session handling for Flask.
+"""Sign-in for Flask (Flask-Login + server-side session rows, see app/auth/service.py).
 
-Flask never validates Better Auth cookies itself: on each request that carries them it
-asks the auth service (`GET /get-session`) and exposes the result as `current_user`.
+Routes and templates use `current_user`, `login_required` and `require_admin` from here.
+Flask-Login keeps only a `UserSession` id in the signed session / remember cookie; the user
+loader looks that row up on every request, so ended sessions, blocks and role changes
+apply at once.
 """
 
-import logging
-from dataclasses import dataclass, replace
-from datetime import datetime
 from functools import wraps
 
-from flask import abort, flash, g, redirect, request, url_for
-from sqlalchemy import text
-from werkzeug.local import LocalProxy
+from flask import abort, flash, redirect, request, session, url_for
+from flask_login import AnonymousUserMixin, LoginManager, current_user, login_user, logout_user  # noqa: F401
 
-from app.auth import client
-from app.auth.client import AuthUnavailable  # noqa: F401  (re-exported for routes)
-from app.extensions import db
+from app.auth import service
 
-log = logging.getLogger(__name__)
+# Better Auth's tables, left in place by the migration that replaced it (their data was copied
+# into `users`). Hidden from Alembic autogenerate until they're dropped by hand.
+LEGACY_TABLES = {"user", "session", "account", "verification"}
 
-# Tables created and migrated by Better Auth (`npm --prefix auth-server run migrate`).
-BETTER_AUTH_TABLES = {"user", "session", "account", "verification"}
-
-# Cookie names Better Auth may set; cleared locally if sign-out can't reach the service.
-_AUTH_COOKIES = ("session_token", "session_data", "dont_remember")
+login_manager = LoginManager()
 
 
-class AnonymousUser:
-    is_authenticated = False
+class AnonymousUser(AnonymousUserMixin):
     is_admin = False
     id = None
 
 
-ANONYMOUS = AnonymousUser()
+login_manager.anonymous_user = AnonymousUser
 
 
-@dataclass(frozen=True)
-class SessionUser:
-    id: str
-    name: str
-    email: str
-    phone: str | None
-    created_at: datetime
-    role: str = "user"
-    is_authenticated: bool = True
-
-    @classmethod
-    def from_json(cls, user):
-        return cls(
-            id=user["id"],
-            name=user.get("name") or "",
-            email=user["email"],
-            phone=user.get("phone") or None,
-            created_at=datetime.fromisoformat(user["createdAt"].replace("Z", "+00:00")),
-            role=user.get("role") or "user",
-        )
-
-    @property
-    def is_admin(self):
-        return self.role == "admin"
-
-    @property
-    def full_name(self):
-        return self.name
-
-    @property
-    def first_name(self):
-        return self.name.split()[0] if self.name.strip() else ""
+@login_manager.user_loader
+def load_user(session_id):
+    user, problem = service.load_session(session_id)
+    if user is None:
+        # Forget the dead session here: calling logout_user() would ask this loader again.
+        session.pop("_user_id", None)
+        session.pop("_fresh", None)
+        session["_remember"] = "clear"  # Flask-Login deletes the remember cookie on the response
+        if request.endpoint != "static":
+            flash("This account has been blocked. Contact Keyora support if you think this is a mistake."
+                  if problem == "blocked" else "You've been signed out. Please sign in again.", "info")
+    return user
 
 
-current_user = LocalProxy(lambda: g.get("user", ANONYMOUS))
+def sign_in(user, remember=False):
+    service.start_session(user, remember)
+    login_user(user, remember=remember)
 
 
-# The session row must still exist (admins can revoke it) and the user must not be blocked.
-# Also returns the current role: the session's copy can be up to 5 minutes old.
-_SESSION_CHECK = text("""
-    SELECT u.role, (u.banned IS TRUE AND (u."banExpires" IS NULL OR u."banExpires" > now())) AS blocked
-    FROM "session" s JOIN "user" u ON u.id = s."userId"
-    WHERE s.id = :session_id AND s."userId" = :user_id AND s."expiresAt" > now()
-""")
-
-
-def load_current_user():
-    g.user = ANONYMOUS
-    if request.endpoint == "static" or not client.has_auth_cookie():
-        return
-    try:
-        result = client.get_session()
-    except AuthUnavailable as exc:
-        log.warning("Auth service unavailable, treating request as signed out: %s", exc)
-        return
-    if not (result.ok and isinstance(result.data, dict) and result.data.get("user")):
-        return
-    user = SessionUser.from_json(result.data["user"])
-    # get-session may answer from Better Auth's signed cookie cache (auth-server/auth.ts) without
-    # looking at the DB, so a session an admin revoked, or a user they blocked, would keep working
-    # for up to 5 minutes. One indexed lookup per signed-in request makes both take effect at once.
-    row = db.session.execute(
-        _SESSION_CHECK, {"session_id": (result.data.get("session") or {}).get("id"), "user_id": user.id}
-    ).one_or_none()
-    if row is None or row.blocked:
-        g.end_auth = True  # relay_cookies clears the browser's auth cookies
-        flash("This account has been blocked. Contact Keyora support if you think this is a mistake."
-              if row is not None else "You've been signed out. Please sign in again.", "info")
-        return
-    g.user = replace(user, role=row.role or "user")
-
-
-def relay_cookies(response):
-    """Copy Better Auth's Set-Cookie headers (sign-in, refresh, sign-out) onto our response,
-    or clear the auth cookies when this request found the session revoked / the user blocked."""
-    cookies = g.pop("auth_set_cookies", [])
-    if g.pop("end_auth", False):
-        return clear_auth_cookies(response)
-    for cookie in cookies:
-        response.headers.add("Set-Cookie", cookie)
-    return response
-
-
-def clear_auth_cookies(response):
-    """Expire the auth cookies locally (sign-out while the auth service is down, revoked sessions)."""
-    for prefix in client.COOKIE_PREFIXES:
-        for name in _AUTH_COOKIES:
-            if prefix + name in request.cookies:
-                response.delete_cookie(prefix + name, path="/")
-    return response
+def sign_out():
+    if current_user.is_authenticated:
+        service.end_session(current_user.session_id)
+    logout_user()
 
 
 def login_required(view):
@@ -139,8 +65,8 @@ def login_required(view):
 
 def require_admin():
     """For `bp.before_request`: sign-in redirect for guests, 404 for signed-in non-admins
-    (so the admin area doesn't reveal that it exists). `current_user.role` is read from the DB
-    on every request (load_current_user), so removing admin access applies at once."""
+    (so the admin area doesn't reveal that it exists). The user row is loaded on every request,
+    so removing admin access applies at once."""
     if not current_user.is_authenticated:
         flash("Sign in to continue.", "info")
         return redirect(url_for("account.login", next=request.full_path.rstrip("?")))
@@ -150,16 +76,13 @@ def require_admin():
 
 
 def alembic_include_object(obj, name, type_, reflected, compare_to):
-    """Keep Alembic autogenerate away from Better Auth's tables, and from our hand-written
-    FKs into them (e.g. addresses.user_id -> "user".id), which the models can't declare."""
+    """Keep Alembic autogenerate away from the leftover Better Auth tables."""
     if type_ == "table":
-        return name not in BETTER_AUTH_TABLES
-    if type_ == "foreign_key_constraint":
-        return obj.referred_table.name not in BETTER_AUTH_TABLES
+        return name not in LEGACY_TABLES
     return True
 
 
 def init_app(app):
-    app.before_request(load_current_user)
-    app.after_request(relay_cookies)
-    app.context_processor(lambda: {"current_user": current_user})
+    login_manager.init_app(app)
+    from app.auth import commands
+    commands.register(app)

@@ -4,10 +4,8 @@
 - Unlike app/catalog.py, product queries here include drafts.
 - Stock edits are applied as deltas (`stock_qty = stock_qty + Δ`), never overwrites, so a
   checkout that reserves stock while the form is open isn't lost.
-- Better Auth's "user" / "session" tables are reached through lightweight table() constructs,
-  not models, so they stay out of our metadata and Alembic autogenerate. Deleting a user's
-  session rows or setting "user".banned takes effect on their next request, because Flask
-  re-checks both every time (app/auth/__init__.py `load_current_user`).
+- Deleting a user's session rows or blocking them takes effect on their next request,
+  because every request re-loads its session row and user (app/auth/service.py `load_session`).
 """
 
 import math
@@ -15,23 +13,20 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from sqlalchemy import case, column, delete, func, or_, select, table, update
+from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload, selectinload
 
 from app.auth import current_user
+from app.auth.service import end_all_sessions
 from app.checkout.forms import clean_phone
 from app.extensions import db
-from app.models import LOW_STOCK_THRESHOLD, AdminLog, Category, Order, Product, ProductVariant
+from app.models import LOW_STOCK_THRESHOLD, AdminLog, Category, Order, Product, ProductVariant, User, UserSession
 
 PER_PAGE = 50
 STORE_TZ = timezone(timedelta(hours=7))  # Cambodia; "today" on the dashboard starts at local midnight
 PAID = ("paid", "paid_late")
 
-users = table("user", column("id"), column("name"), column("email"), column("phone"), column("role"),
-              column("createdAt"), column("banned"), column("banReason"), column("banExpires"))
-sessions = table("session", column("id"), column("userId"), column("expiresAt"), column("updatedAt"),
-                 column("ipAddress"), column("userAgent"))
 BLOCK_DURATIONS = {"": "Until unblocked", "1": "1 day", "7": "7 days", "30": "30 days"}
 
 
@@ -368,7 +363,7 @@ def delete_category(category):
     return True
 
 
-# ---------- Customers (Better Auth users) ----------
+# ---------- Customers ----------
 
 def _customer_columns():
     stats = (
@@ -381,33 +376,32 @@ def _customer_columns():
         .subquery()
     )
     stmt = select(
-        users.c.id, users.c.name, users.c.email, users.c.phone, users.c.role,
-        users.c.createdAt.label("created_at"),
-        _blocked().label("blocked"), users.c.banReason.label("ban_reason"), users.c.banExpires.label("ban_expires"),
+        User.id, User.name, User.email, User.phone, User.role, User.created_at,
+        _blocked().label("blocked"), User.ban_reason, User.ban_expires,
         func.coalesce(stats.c.orders, 0).label("orders"),
         func.coalesce(stats.c.spent, 0).label("spent"),
-    ).select_from(users.outerjoin(stats, stats.c.user_id == users.c.id))
+    ).select_from(User).outerjoin(stats, stats.c.user_id == User.id)
     return stmt
 
 
 def _blocked():
-    """Banned and the ban hasn't run out (Better Auth lifts expired bans at the next sign-in)."""
-    return users.c.banned.is_(True) & or_(users.c.banExpires.is_(None), users.c.banExpires > func.now())
+    """SQL twin of User.is_blocked: banned and the ban hasn't run out."""
+    return User.banned.is_(True) & or_(User.ban_expires.is_(None), User.ban_expires > func.now())
 
 
 def list_customers(q="", role=None, blocked=False, page=1):
-    stmt = _customer_columns().order_by(users.c.createdAt.desc())
+    stmt = _customer_columns().order_by(User.created_at.desc())
     if q:
-        stmt = stmt.where(or_(users.c.name.ilike(f"%{q}%"), users.c.email.ilike(f"%{q}%")))
+        stmt = stmt.where(or_(User.name.ilike(f"%{q}%"), User.email.ilike(f"%{q}%")))
     if role:
-        stmt = stmt.where(users.c.role == role)
+        stmt = stmt.where(User.role == role)
     if blocked:
         stmt = stmt.where(_blocked())
     return _paginate(stmt, page, scalars=False)
 
 
 def get_customer(user_id):
-    return db.session.execute(_customer_columns().where(users.c.id == user_id)).one_or_none()
+    return db.session.execute(_customer_columns().where(User.id == user_id)).one_or_none()
 
 
 def customer_orders(user_id):
@@ -419,15 +413,10 @@ def customer_orders(user_id):
 def active_sessions(user_id):
     """Signed-in devices, most recently active first."""
     return db.session.execute(
-        select(sessions.c.updatedAt.label("last_active"), sessions.c.ipAddress.label("ip"),
-               sessions.c.userAgent.label("user_agent"))
-        .where(sessions.c.userId == user_id, sessions.c.expiresAt > func.now())
-        .order_by(sessions.c.updatedAt.desc())
+        select(UserSession.last_active, UserSession.ip_address.label("ip"), UserSession.user_agent)
+        .where(UserSession.user_id == user_id, UserSession.expires_at > func.now())
+        .order_by(UserSession.last_active.desc())
     ).all()
-
-
-def _end_sessions(user_id):
-    return db.session.execute(delete(sessions).where(sessions.c.userId == user_id)).rowcount
 
 
 def sign_out_everywhere(customer):
@@ -435,24 +424,24 @@ def sign_out_everywhere(customer):
     error message, or None on success."""
     if customer.id == current_user.id:
         return "To sign yourself out, use Sign out in the header."
-    ended = _end_sessions(customer.id)
+    ended = end_all_sessions(customer.id)
     log("customer.sign_out", f"user:{customer.id}", email=customer.email, sessions=ended)
     db.session.commit()
     return None
 
 
 def block(customer, reason, days):
-    """Ban the user (Better Auth admin plugin columns) and end their sessions. They're signed out
-    on their next request and can't sign in until unblocked or the ban runs out. Admins must be
-    demoted first, so two admins can't lock each other out."""
+    """Block the account and end its sessions. They're signed out on their next request and
+    can't sign in until unblocked or the block runs out. Admins must be demoted first, so two
+    admins can't lock each other out."""
     if customer.id == current_user.id:
         return "You can't block yourself."
     if customer.role == "admin":
         return "Remove admin access before blocking this account."
     expires = datetime.now(timezone.utc) + timedelta(days=int(days)) if days else None
-    db.session.execute(update(users).where(users.c.id == customer.id)
-                       .values(banned=True, banReason=reason or None, banExpires=expires))
-    ended = _end_sessions(customer.id)
+    db.session.execute(update(User).where(User.id == customer.id)
+                       .values(banned=True, ban_reason=reason or None, ban_expires=expires))
+    ended = end_all_sessions(customer.id)
     log("customer.block", f"user:{customer.id}", email=customer.email, reason=reason,
         until=expires.isoformat() if expires else "unblocked", sessions=ended)
     db.session.commit()
@@ -460,8 +449,8 @@ def block(customer, reason, days):
 
 
 def unblock(customer):
-    db.session.execute(update(users).where(users.c.id == customer.id)
-                       .values(banned=False, banReason=None, banExpires=None))
+    db.session.execute(update(User).where(User.id == customer.id)
+                       .values(banned=False, ban_reason=None, ban_expires=None))
     log("customer.unblock", f"user:{customer.id}", email=customer.email)
     db.session.commit()
 
@@ -469,7 +458,7 @@ def unblock(customer):
 def set_role(customer, role):
     """Make a customer an admin or remove it. Returns an error message, or None on success.
 
-    Takes effect on their next request: the role is read from the DB every time.
+    Takes effect on their next request: the user row is loaded every time.
     """
     if role not in ("user", "admin"):
         return "Unknown role."
@@ -479,13 +468,13 @@ def set_role(customer, role):
         return None
     if role != "admin":
         # Lock the admin rows so two admins can't demote each other at the same moment.
-        admins = db.session.scalars(select(users.c.id).where(users.c.role == "admin").with_for_update()).all()
+        admins = db.session.scalars(select(User.id).where(User.role == "admin").with_for_update()).all()
         if len(admins) <= 1:
             db.session.rollback()
             return "There must always be at least one admin."
     if role == "admin" and customer.blocked:
         return "Unblock this account first."
-    db.session.execute(update(users).where(users.c.id == customer.id).values(role=role))
+    db.session.execute(update(User).where(User.id == customer.id).values(role=role))
     log("customer.role", f"user:{customer.id}", email=customer.email, before=customer.role, after=role)
     db.session.commit()
     return None

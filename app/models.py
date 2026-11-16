@@ -1,15 +1,17 @@
-"""Catalog models (categories, products, variants), saved customer addresses and orders.
+"""Catalog models (categories, products, variants), customer accounts, addresses and orders.
 
-Customer accounts themselves live in Better Auth's tables (auth-server/), not here.
+Account logic (password hashing, sign-in, sessions) lives in app/auth/service.py, not here.
 
 Templates read products through the properties below (`stock`, `badge`, `swatches`,
 `switches`, `image`, …), which keep the same names the sample data used. Queries live
 in app/catalog.py, not here.
 """
 
+import secrets
 from datetime import datetime, timezone
 from decimal import Decimal
 
+from flask_login import UserMixin
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Numeric, String, Text, func, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -195,6 +197,105 @@ class ProductVariant(db.Model):
         }
 
 
+ROLES = ("user", "admin")
+
+
+def _new_id():
+    return secrets.token_urlsafe(24)
+
+
+class User(UserMixin, db.Model):
+    """A customer or staff account (Flask-Login). Ids are text: accounts migrated from Better Auth
+    kept theirs, so their orders and addresses stayed linked.
+
+    `get_id()` returns the id of the *session row* this request signed in with (set by the
+    user loader), not the user id, so ending a session (sign out, password change, admin
+    block or "sign out everywhere") signs that browser out on its next request.
+    """
+
+    __tablename__ = "users"
+    __table_args__ = (
+        CheckConstraint("role IN (" + ", ".join(f"'{r}'" for r in ROLES) + ")", name="role_valid"),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True, default=_new_id)
+    name: Mapped[str] = mapped_column(String(80), default="")
+    email: Mapped[str] = mapped_column(String(254), unique=True)  # always stored lowercased
+    phone: Mapped[str | None] = mapped_column(String(16))  # digits only, like addresses
+    password_hash: Mapped[str] = mapped_column(Text)
+    role: Mapped[str] = mapped_column(String(16), default="user", server_default="user")
+    banned: Mapped[bool] = mapped_column(default=False, server_default="false")
+    ban_reason: Mapped[str | None] = mapped_column(Text)
+    ban_expires: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # NULL = until unblocked
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=func.now()
+    )
+
+    sessions: Mapped[list["UserSession"]] = relationship(back_populates="user", cascade="all, delete-orphan",
+                                                         passive_deletes=True)
+
+    session_id = None  # set per request by the user loader; see get_id()
+
+    def __repr__(self):
+        return f"<User {self.email}>"
+
+    def get_id(self):
+        return self.session_id
+
+    @property
+    def is_admin(self):
+        return self.role == "admin"
+
+    @property
+    def is_blocked(self):
+        return self.banned and (self.ban_expires is None or self.ban_expires > datetime.now(timezone.utc))
+
+    @property
+    def full_name(self):
+        return self.name
+
+    @property
+    def first_name(self):
+        return self.name.split()[0] if self.name.strip() else ""
+
+
+class UserSession(db.Model):
+    """One signed-in browser. Deleting the row signs that browser out on its next request."""
+
+    __tablename__ = "user_sessions"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True, default=lambda: secrets.token_urlsafe(32))
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=func.now()
+    )
+    last_active: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=func.now()
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ip_address: Mapped[str | None] = mapped_column(String(64))
+    user_agent: Mapped[str | None] = mapped_column(Text)
+
+    user: Mapped[User] = relationship(back_populates="sessions")
+
+    def __repr__(self):
+        return f"<UserSession {self.user_id}>"
+
+
+class LoginThrottle(db.Model):
+    """Failed sign-in attempts per email (whether or not an account exists), for lockouts."""
+
+    __tablename__ = "login_throttle"
+
+    email: Mapped[str] = mapped_column(String(254), primary_key=True)
+    failures: Mapped[int] = mapped_column(default=0)
+    first_failed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class Address(db.Model):
     __tablename__ = "addresses"
     __table_args__ = (
@@ -203,9 +304,7 @@ class Address(db.Model):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    # Better Auth's "user".id (text). The FK + ON DELETE CASCADE is created in the migration:
-    # that table is owned by Better Auth, not this metadata.
-    user_id: Mapped[str] = mapped_column(Text, index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     receiver_name: Mapped[str] = mapped_column(String(80))
     phone: Mapped[str] = mapped_column(String(16))
     province: Mapped[str] = mapped_column(String(40))
@@ -247,8 +346,8 @@ class Order(db.Model):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     ref: Mapped[str] = mapped_column(String(25), unique=True)  # also the KHQR bill number (tag 62/01)
-    # Better Auth's "user".id; NULL for guests. FK (ON DELETE SET NULL) is created in the migration.
-    user_id: Mapped[str | None] = mapped_column(Text, index=True)
+    # NULL for guests; deleting the account keeps its orders as guest orders.
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
     status: Mapped[str] = mapped_column(String(16), default="pending", server_default="pending")
 
     email: Mapped[str] = mapped_column(String(254))
@@ -338,7 +437,7 @@ class AdminLog(db.Model):
     __tablename__ = "admin_log"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[str] = mapped_column(Text)  # Better Auth "user".id; no FK so the log outlives the account
+    user_id: Mapped[str] = mapped_column(Text)  # users.id; no FK so the log outlives the account
     user_email: Mapped[str] = mapped_column(String(254))
     action: Mapped[str] = mapped_column(String(40))  # "order.fulfillment", "product.update", …
     target: Mapped[str] = mapped_column(String(160), index=True)  # "order:KY-…", "product:slug", "user:<id>"

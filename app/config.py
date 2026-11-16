@@ -1,4 +1,5 @@
 import os
+from datetime import timedelta
 
 from dotenv import load_dotenv
 
@@ -29,11 +30,12 @@ class Config:
     }
     SQLALCHEMY_ECHO = os.environ.get("SQLALCHEMY_ECHO") == "1"
 
-    # Better Auth (auth-server/). BETTER_AUTH_URL is the public origin of this Flask app:
-    # cookies are issued for it and it's sent as Origin on server-to-server calls.
-    BETTER_AUTH_URL = os.environ.get("BETTER_AUTH_URL", "http://127.0.0.1:5000")
-    AUTH_SERVER_URL = os.environ.get("AUTH_SERVER_URL", "http://127.0.0.1:3005")
-    AUTH_TIMEOUT = float(os.environ.get("AUTH_TIMEOUT", "5"))
+    # Sign-in (Flask-Login, app/auth/). Set SESSION_COOKIE_SECURE=1 when serving over HTTPS;
+    # it also secures the "Keep me signed in" cookie.
+    SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE") == "1"
+    REMEMBER_COOKIE_SECURE = SESSION_COOKIE_SECURE
+    REMEMBER_COOKIE_SAMESITE = "Lax"
+    REMEMBER_COOKIE_DURATION = timedelta(days=30)  # matches service.REMEMBER_DAYS
 
     # Bakong KHQR (app/checkout/khqr.py, bakong.py). The token is a server secret: never
     # render or log it. Merchant fields go into the QR and must be ASCII; empty = unset.

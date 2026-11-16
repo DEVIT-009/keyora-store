@@ -1,4 +1,4 @@
-"""Saved-address queries and writes, keyed by the Better Auth user id (a string).
+"""Saved-address queries and writes, keyed by users.id (a string).
 
 Accounts themselves (sign-up, sign-in, profile, password) go through app/auth/client.py.
 Every lookup is scoped to the user so ids from the URL can't reach someone else's rows.

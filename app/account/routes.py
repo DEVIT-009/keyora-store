@@ -1,23 +1,15 @@
 from urllib.parse import urlsplit
 
-from flask import abort, flash, make_response, redirect, render_template, request, url_for
+from flask import abort, flash, redirect, render_template, request, url_for
 
 from app.account import bp, forms, service
-from app.auth import AuthUnavailable, clear_auth_cookies, client, current_user, login_required
+from app.auth import current_user, login_required, sign_in, sign_out
+from app.auth import service as accounts
 from app.checkout import orders
 from app.checkout.forms import PROVINCES, format_phone
 
-UNAVAILABLE = "We couldn't reach our sign-in service. Please try again in a moment."
-TOO_MANY = "Too many attempts. Please wait a minute and try again."
-
-# Better Auth error code -> (field, message). Anything unmapped shows a form-level error.
-SIGN_UP_ERRORS = {
-    "USER_ALREADY_EXISTS": ("email", "An account with this email already exists."),
-    "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL": ("email", "An account with this email already exists."),
-    "INVALID_EMAIL": ("email", "Enter a valid email address."),
-    "PASSWORD_TOO_SHORT": ("password", "Use at least 8 characters."),
-    "PASSWORD_TOO_LONG": ("password", "Use at most 128 characters."),
-}
+TOO_MANY = "Too many attempts. Please wait a few minutes and try again."
+BLOCKED = "This account has been blocked. Contact Keyora support if you think this is a mistake."
 
 
 def _safe_next(target):
@@ -27,36 +19,26 @@ def _safe_next(target):
     return url_for("account.overview")
 
 
-def _form_error(result):
-    return TOO_MANY if result.status == 429 else "Something went wrong. Please try again."
-
-
 # ---------- Sign up / in / out ----------
 
 @bp.route("/register", methods=["GET", "POST"])
 def register():
     if current_user.is_authenticated:
         return redirect(url_for("account.overview"))
-    data, errors, form_error = {}, {}, None
+    data, errors = {}, {}
     if request.method == "POST":
         data, errors = forms.validate_register(request.form)
         if not errors:
             try:
-                result = client.sign_up(data["full_name"], data["email"], data["password"])
-            except AuthUnavailable:
-                form_error = UNAVAILABLE
+                user = accounts.register(data["full_name"], data["email"], data["password"])
+            except accounts.EmailTaken:
+                errors["email"] = "An account with this email already exists."
             else:
-                if result.ok:
-                    flash(f"Welcome to Keyora, {data['full_name'].split()[0]}.", "success")
-                    return redirect(_safe_next(request.form.get("next")))
-                if result.error in SIGN_UP_ERRORS:
-                    field, message = SIGN_UP_ERRORS[result.error]
-                    errors[field] = message
-                else:
-                    form_error = _form_error(result)
-    status = 503 if form_error == UNAVAILABLE else 422 if errors or form_error else 200
-    return render_template("account/register.html", data=data, errors=errors, form_error=form_error,
-                           next=request.values.get("next", "")), status
+                sign_in(user)
+                flash(f"Welcome to Keyora, {user.first_name}.", "success")
+                return redirect(_safe_next(request.form.get("next")))
+    return render_template("account/register.html", data=data, errors=errors, form_error=None,
+                           next=request.values.get("next", "")), 422 if errors else 200
 
 
 @bp.route("/login", methods=["GET", "POST"])
@@ -68,20 +50,18 @@ def login():
         data, errors = forms.validate_login(request.form)
         if not errors:
             try:
-                result = client.sign_in(data["email"], data["password"], data["remember"])
-            except AuthUnavailable:
-                form_error = UNAVAILABLE
+                user = accounts.authenticate(data["email"], data["password"])
+            except accounts.TooManyAttempts:
+                form_error = TOO_MANY
+            except accounts.Blocked:
+                form_error = BLOCKED
             else:
-                if result.ok:
+                if user:
+                    sign_in(user, remember=data["remember"])
                     return redirect(_safe_next(request.form.get("next")))
-                # One message for unknown email and wrong password (Better Auth does the same).
-                if result.error == "INVALID_EMAIL_OR_PASSWORD":
-                    form_error = "Email or password is incorrect."
-                elif result.error == "BANNED_USER":  # blocked in the admin (Better Auth admin plugin)
-                    form_error = "This account has been blocked. Contact Keyora support if you think this is a mistake."
-                else:
-                    form_error = _form_error(result)
-    status = 503 if form_error == UNAVAILABLE else 422 if errors or form_error else 200
+                # One message for unknown email and wrong password.
+                form_error = "Email or password is incorrect."
+    status = 429 if form_error == TOO_MANY else 422 if errors or form_error else 200
     return render_template("account/login.html", data=data, errors=errors, form_error=form_error,
                            next=request.values.get("next", "")), status
 
@@ -89,13 +69,9 @@ def login():
 @bp.post("/logout")
 @login_required
 def logout():
+    sign_out()
     flash("You've been signed out.", "info")
-    response = make_response(redirect(url_for("main.index")))
-    try:
-        client.sign_out()
-    except AuthUnavailable:
-        clear_auth_cookies(response)
-    return response
+    return redirect(url_for("main.index"))
 
 
 # ---------- Account overview: profile, addresses, password ----------
@@ -119,12 +95,7 @@ def update_profile():
     data, errors = forms.validate_profile(request.form)
     if errors:
         return _overview(errors, data, status=422)
-    try:
-        result = client.update_user(data["full_name"], data["phone"])
-    except AuthUnavailable:
-        return _overview(data=data, form_error=UNAVAILABLE, status=503)
-    if not result.ok:
-        return _overview(data=data, form_error=_form_error(result), status=422)
+    accounts.update_profile(current_user, data["full_name"], data["phone"])
     flash("Profile saved.", "success")
     return redirect(url_for("account.overview") + "#profile")
 
@@ -135,16 +106,8 @@ def change_password():
     data, errors = forms.validate_password(request.form)
     if errors:
         return _overview(errors, status=422)
-    try:
-        result = client.change_password(data["current_password"], data["new_password"])
-    except AuthUnavailable:
-        return _overview(form_error=UNAVAILABLE, status=503)
-    if result.error == "INVALID_PASSWORD":
+    if not accounts.change_password(current_user, data["current_password"], data["new_password"]):
         return _overview({"current_password": "That's not your current password."}, status=422)
-    if result.error in ("PASSWORD_TOO_SHORT", "PASSWORD_TOO_LONG"):
-        return _overview({"new_password": SIGN_UP_ERRORS[result.error][1]}, status=422)
-    if not result.ok:
-        return _overview(form_error=_form_error(result), status=422)
     flash("Password changed. Other devices have been signed out.", "success")
     return redirect(url_for("account.overview") + "#security")
 

@@ -59,7 +59,7 @@ def validate_profile(form):
 
 
 def validate_password(form):
-    """Shape checks only; Better Auth verifies the current password."""
+    """Shape checks only; app/auth/service.py verifies the current password."""
     data = {"current_password": form.get("current_password") or "", "new_password": form.get("new_password") or ""}
     errors = {}
     if not data["current_password"]:
